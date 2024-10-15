@@ -3,6 +3,7 @@
 - `feynman`: `https://github.com/meamy/feynman.git` `ara` [human](https://github.com/meamy/feynman)
 - `mlvoqc`: `https://github.com/inQWIRE/mlvoqc.git` `main` [human](https://github.com/inQWIRE/mlvoqc)
 - `quartz`: `https://github.com/quantum-compiler/quartz.git` `master` [human](https://github.com/quantum-compiler/quartz)
+- `quartz/external/HiGHS`: `https://github.com/ERGO-Code/HiGHS.git` master [human](https://github.com/ERGO-Code/HiGHS)
 - `queso`: `https://github.com/qqq-wisc/queso.git` `main` [human](https://github.com/qqq-wisc/queso)
 - `quizx`: `https://github.com/zxcalc/quizx.git` `master` [human](https://github.com/zxcalc/quizx)
 - `topt`: `https://github.com/Luke-Heyfron/TOpt.git` `master` [human](https://github.com/Luke-Heyfron/TOpt)
