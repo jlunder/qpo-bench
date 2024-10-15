@@ -27,51 +27,7 @@ There is evidence the authors of the paper mentioned above also installed this e
 
 **The run\_mlvoqc in the paper artifact doesn't exist in the current mlvoqc repository** -- the example.ml has been rewritten and that looks like where the binary was built from (after building everything, I was able to run it on length_simplified_orig1.qasm and it produced the same log messages as I got from running the benchmarks, FWIW).
 
-I quote the file here:
-```
-open Printf
-open Voqc.Qasm
-open Voqc.Main
-
-(* Argument parsing *)
-let f = ref ""
-let o = ref ""
-let light = ref false
-let usage = "usage: " ^ Sys.argv.(0) ^ " -f string"
-let speclist = [
-    ("-f", Arg.Set_string f, ": input program");
-    ("-o", Arg.Set_string o, ": output program");
-    ("--light", Arg.Set light, ": use light optimization")
-  ]
-let () =
-  Arg.parse
-    speclist
-    (fun x -> raise (Arg.Bad ("Bad argument : " ^ x)))
-    usage;
-if !f = "" then printf "ERROR: Input file (-f) required.\n" else
-
-(* Read input file *)
-let _ = printf "Reading input %s\n%!" !f in
-let (c0, n) = read_qasm !f in
-let _ = printf "Input circuit has %d gates and uses %d qubits.\n%!" (count_total c0) n in
-
-(* Optimize *)
-let c1 = if !light then optimize_nam_light c0 else optimize_nam c0 in
-printf "After optimization, the circuit uses %d gates : { H : %d, X : %d, Rzq : %d, CX : %d }.\n%!"
-          (count_total c1) (count_H c1) (count_X c1) (count_Rzq c1) (count_CX c1);
-
-write_qasm c1 n !o
-```
-It's fairly trivial, but we should get permission from the authors if we're going to publish this in our artifact submission, which we should, so that people can run the comparisons.
-
-**There is an error in the mlvoqc dune-project file:** the last line appears to have been modified to add a version requirement for zarith, so it looks like:
-```
-  zarith (>= 1.5)))
-```
-but there need to be parens around the line for it to parse with a version spec:
-```
-  (zarith (>= 1.5))))
-```
+I captured the file here: [run_voqc.ml](from-spire-paper-artifact/run_voqc.ml)
 
 # Running mlvoqc
 
