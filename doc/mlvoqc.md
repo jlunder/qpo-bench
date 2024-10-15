@@ -18,7 +18,11 @@ opam switch create voqc 4.13.1
 eval $(opam env --switch=voqc)
 opam install dune  # build system
 opam install openQASM zarith  # library dependencies
+
+dune build bench_voqc.exe
 ```
+
+Build product is at `_build/default/bench_voqc.exe`
 
 FWIW opam itself says to 
 run `eval $(opam env --switch=voqc)` and that's what I did, instead of just `eval $(opam env)` (per the instructions in the mlvoqc repository). I didn't run `opam install dune` either because I had alread installed dune via apt! Distro vs. upstream package management, it's a gas.
@@ -28,6 +32,8 @@ There is evidence the authors of the paper mentioned above also installed this e
 **The run\_mlvoqc in the paper artifact doesn't exist in the current mlvoqc repository** -- the `example.ml` has been rewritten and that looks like where the binary was built from (after building everything, I was able to run it on `length_simplified_orig1.qasm` and it produced the same log messages as I got from running the benchmarks, FWIW).
 
 I captured the file here: [`example.ml`](from-spire-paper-artifact/example.ml)
+
+This is the file I renamed to `bench_voqc.ml`.
 
 # Running mlvoqc
 
