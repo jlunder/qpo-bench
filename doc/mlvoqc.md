@@ -25,9 +25,9 @@ run `eval $(opam env --switch=voqc)` and that's what I did, instead of just `eva
 
 There is evidence the authors of the paper mentioned above also installed this exact version of the OCaml compiler (4.13.1). This also happens to be the default in Ubuntu 22.04 when I installed (2024-10-14).
 
-**The run\_mlvoqc in the paper artifact doesn't exist in the current mlvoqc repository** -- the example.ml has been rewritten and that looks like where the binary was built from (after building everything, I was able to run it on length_simplified_orig1.qasm and it produced the same log messages as I got from running the benchmarks, FWIW).
+**The run\_mlvoqc in the paper artifact doesn't exist in the current mlvoqc repository** -- the `example.ml` has been rewritten and that looks like where the binary was built from (after building everything, I was able to run it on `length_simplified_orig1.qasm` and it produced the same log messages as I got from running the benchmarks, FWIW).
 
-I captured the file here: [run_voqc.ml](from-spire-paper-artifact/run_voqc.ml)
+I captured the file here: [`example.ml`](from-spire-paper-artifact/example.ml)
 
 # Running mlvoqc
 

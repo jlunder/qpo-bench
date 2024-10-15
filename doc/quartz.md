@@ -1,6 +1,6 @@
 # Building Quartz
 
-It's a bit hard to tell what source was used to do the optimization for the benchmark -- in this case I suspect it's [`src/test/test_nam.cpp`](from-spire-paper-artifact/test_nam.cpp) that was used as the basis but again modified (at minimum, the src and dest gate sets are different from what's in the repository).
+It's a bit hard to tell what source was used to do the optimization for the benchmark -- in this case it seems [`src/test/test_nam.cpp`](from-spire-paper-artifact/test_nam.cpp) was modified to use as the basis. It also appears pybind was removed from the `CMakeLists.txt`.
 
 You will need these other data files -- per the paper:
 

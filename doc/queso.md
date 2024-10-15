@@ -27,14 +27,13 @@ java --enable-preview -cp target/QUESO-1.0-jar-with-dependencies.jar \
   Synthesizer -g nam -q 3 -s 6
 ```
 
-These files appear to be almost-but-not-quite the same as the ones from the Spire paper; for example, my rules_q3_s6_nam.txt is in a different order, but also, it's 3 lines shorter. I don't know why.
+These files appear to be almost-but-not-quite the same as the ones from the Spire paper; for example, my `rules_q3_s6_nam.txt` is in a different order, but also, it's 3 lines shorter. I don't know why.
 
 These are the ones from the Spire paper artifact:
 
 [rules_q3_s6_nam.txt](from-spire-paper-artifact/rules_q3_s6_nam.txt)
 
 [rules_q3_s6_nam_symb.txt](from-spire-paper-artifact/rules_q3_s6_nam_symb.txt)
-
 
 # Running QUESO
 
