@@ -1,20 +1,33 @@
 #!/usr/bin/python
 
+# This is written targeting Ubuntu 22.04. It will probably work on other
+# unixes and e.g. MacOS with Homebrew or similar, but probably not on
+# Windows. If you want to port it, the Ninja generation will most likely
+# need to be updated somewhat significantly, but the rest might just work.
+
 __appname__ = "bench"
 __author__ = "Joseph Lunderville <jlunderv@sfu.ca>"
 __version__ = "0.1"
 
 
+from datetime import datetime
+
+start_time = datetime.now()
+
+
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from enum import Enum, auto
 import itertools
 import logging
 import os
 from pathlib import Path
+import shutil
+from subprocess import Popen
 import sys
 
 from ninja import ninja_syntax as ns
+
 
 logger = logging.getLogger(__appname__)
 
@@ -30,31 +43,17 @@ class Resource:
     qc_res: str | None
     qasm_res: str | None
     qasm3_res: str | None
-    skip_subjects: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True, order=True)
 class Benchmark:
     name: str
+    subjects: set[str]
     measurables: set[Measurable]
-    resources: list[Resource]
+    resources: set[str]
     time_limit: float | None
     memory_limit: float | None
     repeat_count: int
-
-
-# The TestSubject is almost-but-not-quite the thing that runs the benchmark:
-# we use ninja as our build backend, and this class generates syntax that
-# instructs it on how to actually conduct the test.
-class TestSubject:
-    # Write a ninja snippet to run the actual test and collect output
-    def emit_goal(
-        self,
-        writer: ns.Writer,
-        output_path: Path,
-        bench: Benchmark,
-    ):
-        pass
 
 
 @dataclass
@@ -63,52 +62,153 @@ class Args:
     list_suites: bool = False
     suites: list[str] | None = None
 
+    run_ts: datetime = start_time
+    run_id: str = start_time.strftime("%Y-%m-%d_%H-%M-%S")
+    run_path: Path = Path(os.path.abspath(os.curdir))
+    bench_bench: Path = Path("bench")
+    bench_build: Path = Path("bench/build")
+    # Relative to bench_build!
+    bench_root: Path = Path("../..")
+    res_dir: Path = Path("bench/resources")
+    all_resources: dict[str, Resource] = None
 
-def make_arg_parser():
-    parser = argparse.ArgumentParser(description="Run a suite of benchmarks")
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="verbose message output"
-    )
-    parser.add_argument(
-        "--list-suites",
-        action="store_true",
-        help="output TBM path",
-    )
-    parser.add_argument(
-        "suites", metavar="SUITE", nargs="*", help="list of benchmark suites"
-    )
+    @staticmethod
+    def make_parser():
+        parser = argparse.ArgumentParser(description="Run a suite of benchmarks")
+        parser.add_argument(
+            "-v", "--verbose", action="store_true", help="verbose message output"
+        )
+        parser.add_argument(
+            "--list-suites",
+            action="store_true",
+            help="output TBM path",
+        )
+        parser.add_argument(
+            "suites", metavar="SUITE", nargs="*", help="list of benchmark suites"
+        )
 
-    return parser
-
-
-arg_parser: argparse.ArgumentParser = make_arg_parser()
+        return parser
 
 
-# Scan the bench/* folders for resource files i.e. circuits/programs
+# The TestSubject is almost-but-not-quite the thing that runs the benchmark:
+# we use ninja as our build backend, and this class generates syntax that
+# instructs it on how to actually conduct the test.
+class TestSubject:
+    name: str
 
-res_dir = Path("bench/resources")
-resource_files = {
-    d: {
-        os.path.splitext(r)[0]: res_dir / d / r
-        for r in os.listdir(res_dir / d)
-        if not r.startswith(".")
-    }
-    for d in os.listdir(res_dir)
-    if not d.startswith(".")
+    # Write a ninja snippet to run the actual test and collect output
+    def emit(
+        self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
+    ) -> list[str]:
+        return []
+
+
+class FeynmanTestSubject(TestSubject):
+    name = "feynman"
+
+    def emit(
+        self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
+    ) -> list[str]:
+        norm_bench_root = Path(
+            os.path.normpath(args.run_path / args.bench_build / args.bench_root)
+        )
+
+        rule = ns.escape(self.name)
+
+        build_rule = ns.escape("build_" + self.name)
+        writer.rule(
+            build_rule,
+            "cd "
+            + ns.escape_path(str(norm_bench_root / self.name))
+            + " && cabal build -v0 -O2 feynopt",
+        )
+
+        writer.build(self.name, build_rule)
+
+        writer.rule(
+            rule,
+            "cd "
+            + ns.escape_path(str(norm_bench_root / self.name))
+            + " && cabal exec -v0 -O2 feynopt -- -O2 $in > $out",
+        )
+
+        rule_qasm3 = ns.escape(self.name + "_qasm3")
+        writer.rule(
+            rule_qasm3,
+            "cd "
+            + ns.escape_path(str(norm_bench_root / self.name))
+            + " && cabal exec -v0 -O2 feynopt -- -O2 -qasm3 $in > $out",
+        )
+
+        targets = []
+        for r in bench.resources:
+            res = args.all_resources[r]
+            qc = res.qc_res or res.qasm_res
+            qp = res.qasm3_res
+            if qc:
+                out = os.path.normpath(
+                    args.run_path / output_path / (r + "_opt" + os.path.splitext(qc)[1])
+                )
+                targets.append(out)
+                writer.build([str(out)], rule, [str(qc)], [self.name])
+            elif qp:
+                out = os.path.normpath(
+                    args.run_path / output_path / (r + "_opt" + os.path.splitext(qp)[1])
+                )
+                targets.append(out)
+                writer.build([str(out)], rule_qasm3, [str(qp)], [self.name])
+        return targets
+
+
+class MlvoqcTestSubject(TestSubject):
+    name = "mlvoqc"
+
+    def emit(
+        self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
+    ) -> list[str]:
+        return []
+
+
+class QuartzTestSubject(TestSubject):
+    name = "quartz"
+
+    def emit(
+        self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
+    ) -> list[str]:
+        return []
+
+
+class QuesoTestSubject(TestSubject):
+    name = "queso"
+
+    def emit(
+        self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
+    ) -> list[str]:
+        return []
+
+
+class QuizxTestSubject(TestSubject):
+    name = "quizx"
+
+    def emit(
+        self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
+    ) -> list[str]:
+        return []
+
+
+subjects: dict[str, TestSubject] = {
+    subject.name: subject
+    for subject in [
+        FeynmanTestSubject(),
+        MlvoqcTestSubject(),
+        QuartzTestSubject(),
+        QuesoTestSubject(),
+        QuizxTestSubject(),
+    ]
 }
 
-resource_names = set(itertools.chain(*map(dict.keys, resource_files.values())))
-resources = {
-    name: Resource(
-        name,
-        resource_files["qc"].get(name),
-        resource_files["qasm"].get(name),
-        resource_files["qasm3"].get(name),
-    )
-    for name in resource_names
-}
 
-circuit_tests = [
+all_circuits = [
     "adder_8",
     "barenco_tof_10",
     "barenco_tof_3",
@@ -156,7 +256,7 @@ circuit_tests = [
     "vbe_adder_3",
 ]
 
-program_tests = [
+all_programs = [
     "grover",
     "if-simple",
     "loop-block",
@@ -171,91 +271,145 @@ program_tests = [
     "rus",
 ]
 
-benchmarks = {"popl25": None}
 
-
-suites = Path()
-
-
-class FeynmanTestSubject:
-    def emit_goal(
-        self,
-        writer: ns.Writer,
-        output_path: Path,
-        bench: Benchmark,
-    ):
-        pass
-
-
-class MlvoqcTestSubject:
-    def emit_goal(
-        self,
-        writer: ns.Writer,
-        output_path: Path,
-        bench: Benchmark,
-    ):
-        pass
-
-
-class QuartzTestSubject:
-    def emit_goal(
-        self,
-        writer: ns.Writer,
-        output_path: Path,
-        bench: Benchmark,
-    ):
-        pass
-
-
-class QuesoTestSubject:
-    def emit_goal(
-        self,
-        writer: ns.Writer,
-        output_path: Path,
-        bench: Benchmark,
-    ):
-        pass
-
-
-class QuizxTestSubject:
-    def emit_goal(
-        self,
-        writer: ns.Writer,
-        output_path: Path,
-        bench: Benchmark,
-    ):
-        pass
-
-
-subjects = {
-"feynman": FeynmanTestSubject(),
-"mlvoqc": MlvoqcTestSubject(),
-"quartz": QuartzTestSubject(),
-"queso": QuesoTestSubject(),
-"quizx": QuizxTestSubject(),
+benchmark_suites = {
+    "popl25": Benchmark(
+        "popl25",
+        subjects=set(["feynman"]),
+        measurables=set([Measurable.T_COUNT, Measurable.TIME]),
+        resources=set(all_circuits[:2] + all_programs[:2]),
+        memory_limit=None,
+        time_limit=None,
+        repeat_count=1,
+    )
 }
+
+
+def detect_run_path(args: Args):
+    if not os.path.isdir(args.run_path / args.bench_build):
+        logger.info("Didn't find bench_build '%s'", args.run_path / args.bench_build)
+        alt_run_path = Path(os.path.abspath(os.path.dirname(sys.argv[0])))
+        if os.path.isdir(alt_run_path / args.bench_build):
+            logger.warning(
+                "Don't seem to be running from bench project "
+                + "root, using argv[0] root '%s' instead of CWD",
+                alt_run_path,
+            )
+            args.run_path = alt_run_path
+
+
+def scan_resources(args: Args):
+    logger.info("Checking for bench_bench '%s'", args.run_path / args.bench_bench)
+    if not os.path.isdir(args.run_path / args.bench_bench):
+        raise Exception("Didn't find bench dir at '%s'" % (args.bench_bench,))
+    norm_bench_root = Path(
+        os.path.normpath(args.run_path / args.bench_build / args.bench_root)
+    )
+    if not os.path.isdir(norm_bench_root):
+        raise Exception(
+            "Didn't find bench project root dir at '%s'" % (args.bench_root,)
+        )
+    logger.info("Real bench_root is '%s'", norm_bench_root)
+    subjects_used = set(
+        sum([list(benchmark_suites[s].subjects) for s in args.suites], [])
+    )
+    logger.info("Looking for actually used subjects [%s]" % (", ".join(subjects_used),))
+    for s in subjects_used:
+        if not os.path.isdir(norm_bench_root / s):
+            raise Exception("Didn't find subject dir at '%s'" % (args.bench_root / s,))
+
+    # Scan the bench/* folders for resource files i.e. circuits/programs
+    norm_res_dir = norm_bench_root / args.res_dir
+
+    def list_resources(path: Path, ext_filter: str):
+        if not os.path.isdir(path):
+            logger.warning("Didn't find expected resource dir '%s'", path)
+            return
+        for filename in os.listdir(path):
+            filename: str
+            if not filename.startswith("."):
+                base, ext = os.path.splitext(filename)
+                full_path = path / filename
+                if os.path.isfile(full_path) and ext == ext_filter:
+                    yield base, full_path
+
+    resource_files = {
+        d: {n: p for n, p in list_resources(norm_res_dir / d, ext)}
+        for d, ext in {"qc": ".qc", "qasm": ".qasm", "qasm3": ".qasm"}.items()
+    }
+    resource_names = set(itertools.chain(*map(dict.keys, resource_files.values())))
+    args.all_resources = {
+        name: Resource(
+            name,
+            resource_files["qc"].get(name),
+            resource_files["qasm"].get(name),
+            resource_files["qasm3"].get(name),
+        )
+        for name in resource_names
+    }
+    if len(args.all_resources) > 0:
+        logger.info("Loaded resources:")
+        for n, r in args.all_resources.items():
+            logger.info("  %s: %s", n, r)
+    else:
+        logger.warning("Didn't find any resources!")
+
+
+def run_benchmark(args: Args, b: Benchmark):
+    build_folder = args.bench_build / b.name / args.run_id
+    logger.info("Run ID '%s', building into folder '%s'", args.run_id, build_folder)
+    if os.path.isdir(build_folder):
+        raise Exception("Build folder '%s' already exists" % (build_folder,))
+    try:
+        os.makedirs(build_folder)
+        w = ns.Writer(open(build_folder / "build.ninja", "wt"))
+        targets = []
+        for s in b.subjects:
+            os.makedirs(build_folder / s)
+            targets.extend(subjects[s].emit(args, w, build_folder / s, b))
+        del w
+    except:
+        # We didn't get far enough along to bother saving the folder
+        shutil.rmtree(build_folder, ignore_errors=True)
+        raise
+    p = Popen(["ninja"] + targets, cwd=build_folder)
+    p.communicate()
 
 
 def main(args: Args):
     if args.list_suites:
-        pass
-    else:
+        print("Available benchmark suites:")
+        for suite in sorted(benchmark_suites.keys()):
+            print("  " + suite)
+        return 0
+
+    for suite in args.suites:
+        run_benchmark(args, benchmark_suites[suite])
+    return 0
+
+
+if __name__ == "__main__":
+    arg_parser: argparse.ArgumentParser = Args.make_parser()
+
+    try:
+        args: Args = arg_parser.parse_args(namespace=Args())
+
+        logger.setLevel(logging.INFO if args.verbose else logging.DEBUG)
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(handler)
+
+        detect_run_path(args)
+        scan_resources(args)
+
         if len(args.suites) < 1:
             arg_parser.error(
                 "specify at least one suite; for a list of valid options, "
                 + "use --list-suites"
             )
-            sys.exit(2)
-    return 0
-
-
-if __name__ == "__main__":
-    try:
-        args: Args = arg_parser.parse_args(namespace=Args())
-        logger.setLevel(logging.INFO if args.verbose else logging.DEBUG)
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        logger.addHandler(handler)
+        for suite in args.suites:
+            if not suite in benchmark_suites:
+                arg_parser.error("unknown suite '" + suite + "'")
 
         res = main(args)
 
