@@ -1,9 +1,6 @@
 #!/usr/bin/python
 
-# This is written targeting Ubuntu 22.04. It will probably work on other
-# unixes and e.g. MacOS with Homebrew or similar, but probably not on
-# Windows. If you want to port it, the Ninja generation will most likely
-# need to be updated somewhat significantly, but the rest might just work.
+# See README.md for all sorts of useful info
 
 __appname__ = "bench"
 __author__ = "Joseph Lunderville <jlunderv@sfu.ca>"
@@ -90,13 +87,26 @@ class Args:
         return parser
 
 
+@dataclass
+class TestResultFiles:
+    suite: str
+    subject: str
+    resource: str
+    test: str
+    run_id: int
+    output: Path
+    run_log: Path
+    usage: Path
+
+
 # The TestSubject is almost-but-not-quite the thing that runs the benchmark:
 # we use ninja as our build backend, and this class generates syntax that
 # instructs it on how to actually conduct the test.
 class TestSubject:
     name: str
 
-    # Write a ninja snippet to run the actual test and collect output
+    # Write a ninja snippet to run the actual test and collect output; output
+    # is a list of with the full paths of the optimized files
     def emit(
         self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
     ) -> list[str]:
@@ -109,8 +119,10 @@ class FeynmanTestSubject(TestSubject):
     def emit(
         self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
     ) -> list[str]:
-        norm_bench_root = Path(
-            os.path.normpath(args.run_path / args.bench_build / args.bench_root)
+        subject_root = Path(
+            os.path.normpath(
+                args.run_path / args.bench_build / args.bench_root / self.name
+            )
         )
 
         rule = ns.escape(self.name)
@@ -119,7 +131,7 @@ class FeynmanTestSubject(TestSubject):
         writer.rule(
             build_rule,
             "cd "
-            + ns.escape_path(str(norm_bench_root / self.name))
+            + ns.escape_path(str(subject_root))
             + " && cabal build -v0 -O2 feynopt",
         )
 
@@ -128,7 +140,7 @@ class FeynmanTestSubject(TestSubject):
         writer.rule(
             rule,
             "cd "
-            + ns.escape_path(str(norm_bench_root / self.name))
+            + ns.escape_path(str(subject_root))
             + " && cabal exec -v0 -O2 feynopt -- -O2 $in > $out",
         )
 
@@ -136,7 +148,7 @@ class FeynmanTestSubject(TestSubject):
         writer.rule(
             rule_qasm3,
             "cd "
-            + ns.escape_path(str(norm_bench_root / self.name))
+            + ns.escape_path(str(subject_root))
             + " && cabal exec -v0 -O2 feynopt -- -O2 -qasm3 $in > $out",
         )
 
@@ -160,6 +172,11 @@ class FeynmanTestSubject(TestSubject):
         return targets
 
 
+"""
+./run_voqc -f circuits/qasm/length_simplified_orig$i.qasm -o voqc_out/length_simplified_orig$i.qasm
+"""
+
+
 class MlvoqcTestSubject(TestSubject):
     name = "mlvoqc"
 
@@ -167,6 +184,11 @@ class MlvoqcTestSubject(TestSubject):
         self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
     ) -> list[str]:
         return []
+
+
+"""
+./run_quartz circuits/qasm/$X.qasm --eqset quartz/3_2_5_complete_ECC_set.json --output quartz_out/length_simplified_orig$i.qasm
+"""
 
 
 class QuartzTestSubject(TestSubject):
@@ -178,13 +200,77 @@ class QuartzTestSubject(TestSubject):
         return []
 
 
+"""
+java --enable-preview -cp queso/SymbolicOptimizer-1.0-SNAPSHOT-jar-with-dependencies.jar \
+  Applier -c circuits/qasm/$X.qasm -g nam -r queso/rules_q3_s6_nam.txt -sr queso/rules_q3_s6_nam_symb.txt -t $QUESO_TIMEOUT_SEC -o queso_out -j "nam" > queso_out/$X
+"""
+
+
 class QuesoTestSubject(TestSubject):
     name = "queso"
 
     def emit(
         self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
     ) -> list[str]:
-        return []
+        subject_root = Path(
+            os.path.normpath(
+                args.run_path / args.bench_build / args.bench_root / self.name
+            )
+        )
+
+        rule = ns.escape(self.name)
+        queso_jar = str(subject_root / "target/QUESO-1.0-jar-with-dependencies.jar")
+
+        build_rule = ns.escape("build_" + self.name)
+        writer.rule(
+            build_rule,
+            "cd "
+            + ns.escape_path(str(subject_root))
+            + " && mvn package -Dmaven.test.skip",
+        )
+
+        writer.build(queso_jar, build_rule)
+
+        nam_txt = str(subject_root / "rules_q3_s6_nam.txt")
+        nam_symb_txt = str(subject_root / "rules_q3_s6_nam_symb.txt")
+        writer.rule(
+            rule,
+            "cd "
+            + ns.escape_path(str(subject_root))
+            + " && cabal exec -v0 -O2 feynopt -- -O2 $in > $out",
+        )
+
+        rule_qasm3 = ns.escape(self.name + "_qasm3")
+        writer.rule(
+            rule_qasm3,
+            "cd "
+            + ns.escape_path(str(subject_root))
+            + " && cabal exec -v0 -O2 feynopt -- -O2 -qasm3 $in > $out",
+        )
+
+        targets = []
+        for r in bench.resources:
+            res = args.all_resources[r]
+            qc = res.qc_res or res.qasm_res
+            qp = res.qasm3_res
+            if qc:
+                out = os.path.normpath(
+                    args.run_path / output_path / (r + "_opt" + os.path.splitext(qc)[1])
+                )
+                targets.append(out)
+                writer.build([str(out)], rule, [str(qc)], [self.name])
+            elif qp:
+                out = os.path.normpath(
+                    args.run_path / output_path / (r + "_opt" + os.path.splitext(qp)[1])
+                )
+                targets.append(out)
+                writer.build([str(out)], rule_qasm3, [str(qp)], [self.name])
+        return targets
+
+
+"""
+./run_quizx circuits/qasm/$X.qasm > quizx_out/$X.qasm
+"""
 
 
 class QuizxTestSubject(TestSubject):
@@ -193,7 +279,57 @@ class QuizxTestSubject(TestSubject):
     def emit(
         self, args: Args, writer: ns.Writer, output_path: Path, bench: Benchmark
     ) -> list[str]:
-        return []
+        subject_root = Path(
+            os.path.normpath(
+                args.run_path / args.bench_build / args.bench_root / self.name
+            )
+        )
+
+        rule = ns.escape(self.name)
+
+        build_rule = ns.escape("build_" + self.name)
+        writer.rule(
+            build_rule,
+            "cd "
+            + ns.escape_path(str(subject_root))
+            + " && cabal build -v0 -O2 feynopt",
+        )
+
+        writer.build(self.name, build_rule)
+
+        writer.rule(
+            rule,
+            "cd "
+            + ns.escape_path(str(subject_root))
+            + " && cabal exec -v0 -O2 feynopt -- -O2 $in > $out",
+        )
+
+        rule_qasm3 = ns.escape(self.name + "_qasm3")
+        writer.rule(
+            rule_qasm3,
+            "cd "
+            + ns.escape_path(str(subject_root))
+            + " && cabal exec -v0 -O2 feynopt -- -O2 -qasm3 $in > $out",
+        )
+
+        targets = []
+        for r in bench.resources:
+            res = args.all_resources[r]
+            qc = res.qc_res or res.qasm_res
+            qp = res.qasm3_res
+            if qc:
+                out = os.path.normpath(
+                    args.run_path / output_path / (r + "_opt" + os.path.splitext(qc)[1])
+                )
+                targets.append(out)
+                writer.build([str(out)], rule, [str(qc)], [self.name])
+            elif qp:
+                out = os.path.normpath(
+                    args.run_path / output_path / (r + "_opt" + os.path.splitext(qp)[1])
+                )
+                targets.append(out)
+                writer.build([str(out)], rule_qasm3, [str(qp)], [self.name])
+        return targets
 
 
 subjects: dict[str, TestSubject] = {
@@ -310,9 +446,15 @@ def scan_resources(args: Args):
             "Didn't find bench project root dir at '%s'" % (args.bench_root,)
         )
     logger.info("Real bench_root is '%s'", norm_bench_root)
+
+    # Make a shortlist of subjects which are actually required for this
+    # particular suite before doing sanity checking -- this is QOL for
+    # development, if a subject is broken because it's not implemented, you
+    # probably would like to still be able to test other subjects
     subjects_used = set(
         sum([list(benchmark_suites[s].subjects) for s in args.suites], [])
     )
+    # The sanity check right now just tests if there's a folder there
     logger.info("Looking for actually used subjects [%s]" % (", ".join(subjects_used),))
     for s in subjects_used:
         if not os.path.isdir(norm_bench_root / s):
