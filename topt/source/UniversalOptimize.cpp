@@ -160,7 +160,7 @@ SQC_Circuit SQC_Circuit::UniversalOptimize(const SQC_Circuit& in, TO_Decoder dec
                 //step10.simplify();
 
                 if(!g_algebra_prefix.empty()) {
-                    char temp_numstr[10];
+                    char temp_numstr[11];
                     sprintf(temp_numstr,"%d",(p+1));
                     string temp_filename = g_algebra_prefix + string(temp_numstr);
                     SaveRepresentationsToFile(step10, temp_filename.c_str());
@@ -847,6 +847,18 @@ void SQC_Circuit::decompose_into_Hadamard_partitions(const SQC_Circuit& in, SQC_
             final_H = 0;
         }
     }
+
+    // If we didn't generate any partitions, make sure there's at least one
+    // (extremely sus?)
+    if(N_Ps == 0) {
+        inPs[N_Ps] = new SQC_Circuit(this_C);
+
+        while(this_C.m>0) {
+            this_C.DeleteOperator(this_C.m-1);
+        }
+        N_Ps++;
+    }
+
     // Find final Hadamard partition
     if(final_H) {
         inHs[N_Hs] = new SQC_Circuit(n,in.d);

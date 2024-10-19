@@ -1,7 +1,7 @@
 CC      = g++
-LFLAGS  = -L. 
+LFLAGS  = -g -L.
 LIBS    = -lm
-CFLAGS  = -O3 -std=c++11
+CFLAGS  = -g -O3 -std=c++11
 INCS    = -I ./include
 EXEC    = bin/TOpt
 

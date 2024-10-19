@@ -1195,7 +1195,9 @@ SQC_Circuit* SQC_Circuit::LoadTFCFile(const char* inFilename) {
 				strcpy(this_line,this_line_commented);
 				char* temp = strchr(this_line,'#');
 				if(temp) *temp = '\0';
-			}
+			} else {
+                this_line[0] = 0;
+            }
 
             if(/*this_line&&*/strlen(this_line)) {
 				switch(file_state) {
@@ -1253,14 +1255,14 @@ SQC_Circuit* SQC_Circuit::LoadTFCFile(const char* inFilename) {
 						break;
 					case 1: //between .v and BEGIN
 						{
-							if(!strcmp(this_line,"BEGIN")) {
+							if(!strncmp(this_line,"BEGIN",5)) {
 								file_state = 2;
 							}
 						}
 						break;
 					case 2: // between BEGIN and END
 						{
-							if(!strcmp(this_line,"END")) {
+							if(!strncmp(this_line,"END",3)) {
 								file_state = 3;
 							} else {
 								char* this_tok = NULL;
