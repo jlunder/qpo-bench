@@ -9,7 +9,7 @@
 | queso | https://github.com/qqq-wisc/queso.git | main | [QUESO github](https://github.com/qqq-wisc/queso) |
 | quizx | https://github.com/zxcalc/quizx.git | master | [QuiZX github](https://github.com/zxcalc/quizx) |
 | topt | https://github.com/Luke-Heyfron/TOpt.git | master | [TOpt github](https://github.com/Luke-Heyfron/TOpt) |
-
+| vv-qco | https://github.com/VivienVandaele/quantum-circuit-optimization.git | main | [quantum-circuit-optimiziation github](https://github.com/VivienVandaele/quantum-circuit-optimization) |
 
 # General git subtree usage
 
@@ -20,9 +20,9 @@
 
 Quick-and-dirty:
 
-Add: `git subtree add --prefix $PATH $SUBTREE_URL $SUBTREE_BRANCH --squash`
+Add: `git subtree add --squash --prefix $PATH $SUBTREE_URL $SUBTREE_BRANCH`
 
-Update: `git subtree pull --prefix $PATH $SUBTREE_URL $SUBTREE_BRANCH --squash`
+Update: `git subtree pull --squash --prefix $PATH $SUBTREE_URL $SUBTREE_BRANCH`
 
 Using remote names:
 
