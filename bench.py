@@ -337,9 +337,12 @@ subjects: dict[str, TestSubject] = {
     for subject in [
         FeynmanTestSubject(),
         MlvoqcTestSubject(),
+        # PyzxTestSubject(),
         QuartzTestSubject(),
         QuesoTestSubject(),
         QuizxTestSubject(),
+        # ToptTestSubject(),
+        # VvQcoTestSubject(),
     ]
 }
 
@@ -409,15 +412,77 @@ all_programs = [
 
 
 benchmark_suites = {
+    "minimal": Benchmark(
+        "minimal",
+        subjects=set(["feynman"]),
+        measurables=set([Measurable.T_COUNT, Measurable.TIME]),
+        resources=set(["qft_4", "tof_4"] + ["if-simple", "loop-simple"]),
+        memory_limit=None,
+        time_limit=None,
+        repeat_count=1,
+    ),
     "popl25": Benchmark(
         "popl25",
         subjects=set(["feynman"]),
         measurables=set([Measurable.T_COUNT, Measurable.TIME]),
-        resources=set(all_circuits[:2] + all_programs[:2]),
+        resources=set(
+            [
+                "grover_5",
+                "mod5_4",
+                "vbe_adder_3",
+                "csla_mux_3",
+                "csum_mux_9",
+                "qcla_com_7",
+                "qcla_mod_7",
+                "qcla_adder_10",
+                "adder_8",
+                "rc_adder_6",
+                "mod_red_21",
+                "mod_mult_55",
+                "mod_adder_1024",
+                "gf2^4_mult",
+                "gf2^5_mult",
+                "gf2^6_mult",
+                "gf2^7_mult",
+                "gf2^8_mult",
+                "gf2^9_mult",
+                "gf2^10_mult",
+                "gf2^16_mult",
+                "gf2^32_mult",
+                "ham15-low",
+                "ham15-med",
+                "ham15-high",
+                "hwb6",
+                "qft_4",
+                "tof_3",
+                "tof_4",
+                "tof_5",
+                "tof_10",
+                "barenco_tof_3",
+                "barenco_tof_4",
+                "barenco_tof_5",
+                "barenco_tof_10",
+            ]
+            + [
+                "fprenorm",
+            ]
+            + [
+                "rus",
+                "grover",
+                "reset-simple",
+                "if-simple",
+                "loop-simple",
+                "loop-h",
+                "loop-nested",
+                "loop-swap",
+                "loop-nonlinear",
+                "loop-null",
+            ]
+        ),
         memory_limit=None,
         time_limit=None,
         repeat_count=1,
-    )
+    ),
 }
 
 
@@ -536,7 +601,7 @@ if __name__ == "__main__":
     try:
         args: Args = arg_parser.parse_args(namespace=Args())
 
-        logger.setLevel(logging.INFO if args.verbose else logging.DEBUG)
+        logger.setLevel(logging.INFO if args.verbose else logging.WARNING)
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(handler)
