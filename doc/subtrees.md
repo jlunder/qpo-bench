@@ -29,12 +29,12 @@ Using remote names:
 Add:
 ```
 git remote add -f $REMOTE $SUBTREE_URL
-git subtree add --prefix $PATH $REMOTE $SUBTREE_BRANCH --squash
+git subtree add --squash --prefix $PATH $REMOTE $SUBTREE_BRANCH
 ```
 
 Update:
 ```
 git fetch tpope-vim-surround main
-git subtree pull --prefix $PATH $REMOTE $SUBTREE_BRANCH --squash
+git subtree pull --squash --prefix $PATH $REMOTE $SUBTREE_BRANCH
 ```
 
