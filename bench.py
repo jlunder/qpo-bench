@@ -14,7 +14,7 @@ start_time = datetime.now()
 
 import argparse
 from dataclasses import dataclass, replace, field
-from enum import Enum, auto
+from enum import Enum, StrEnum, auto
 import itertools
 import logging
 import os
@@ -75,6 +75,12 @@ class Measurable(Enum):
     MAX_MEMORY = auto()
 
 
+class Syntax(StrEnum):
+    QC = "qc"
+    QASM = "qasm"
+    QASM3 = "qasm3"
+
+
 @dataclass(frozen=True, order=True)
 class Resource:
     name: str
@@ -99,10 +105,14 @@ class TestResults:
     subject_name: str
     resource_name: str
     run_id: int
-    opt_path: Path | None
-    log_path: Path | None
-    time_path: Path | None
+    syntax: Syntax
+    input_path: Path
+    opt_path: Path
+    log_path: Path
+    time_path: Path
     analysis_path: Path | None
+    verify_log_path: Path | None
+    verify_time_path: Path | None
 
 
 # The TestSubject is almost-but-not-quite the thing that runs the benchmark:
@@ -151,7 +161,7 @@ class TestSubject:
         )
         writer.rule(
             rule_name,
-            "time -f '{"
+            "time -q -f '{"
             + ns.escape(time_outputs_str)
             + "}' -o '"
             + time_file_var
@@ -178,17 +188,81 @@ class FeynmanTestSubject(TestSubject):
             subject_path=TestSubject.make_subject_path(self.__class__.name),
         )
 
+    # def emit_analyze_dependencies(self, writer: ns.Writer) -> None:
+    #     writer.rule(
+    #         "build_feynver",
+    #         "cd "
+    #         + ns.escape_path(str(self.subject_path))
+    #         + " && cabal build -O2 feynver",
+    #     )
+    #     writer.build("feynver", "build_feynver")
+
+    #     rule = ns.escape(self.name)
+    #     TestSubject.emit_time_rule(
+    #         writer,
+    #         "feynver_verify",
+    #         "cd "
+    #         + ns.escape_path(str(self.subject_path))
+    #         + " && cabal exec -v0 feynver -O2 -- -O2 '$in' > '$opt_file' 2> '$verify_log_file'",
+    #         "$verify_time_file",
+    #     )
+
+    # def emit_verify_dependencies(self, writer: ns.Writer) -> None:
+    #     writer.rule(
+    #         "build_feynver",
+    #         "cd "
+    #         + ns.escape_path(str(self.subject_path))
+    #         + " && cabal build -O2 feynver",
+    #     )
+    #     writer.build("feynver", "build_feynver")
+
+    #     rule = ns.escape(self.name)
+    #     TestSubject.emit_time_rule(
+    #         writer,
+    #         "feynver_verify",
+    #         "cd "
+    #         + ns.escape_path(str(self.subject_path))
+    #         + " && cabal exec -v0 feynver -O2 -- -O2 '$in' > '$opt_file' 2> '$verify_log_file'",
+    #         "$verify_time_file",
+    #     )
+
+    # def emit_verify(
+    #     self, writer: ns.Writer, out_path: Path, to_verify: list[TestResults]
+    # ) -> list[TestResults]:
+    #     verified_result = []
+    #     for result in to_verify:
+    #         verify_log_path = out_path / (res.name + "_verify_stderr.log")
+    #         verify_time_path = out_path / (res.name + "_verify_time.json")
+    #         vars = {
+    #             "ref_file": ns.escape_path(str(result.input_path)),
+    #             "log_file": ns.escape_path(str(verify_log_path)),
+    #             "time_file": ns.escape_path(str(verify_time_path)),
+    #         }
+    #         writer.build(
+    #             [str(verify_log_path), str(verify_time_path)],
+    #             "feynver_verify",
+    #             [str(result.opt_path)],
+    #             ["feynver", str(result.input_path)],
+    #             variables=vars,
+    #         )
+    #         verified_result.append(
+    #             replace(
+    #                 result,
+    #                 verify_log_path=verify_log_path,
+    #                 verify_time_path=verify_time_path,
+    #             )
+    #         )
+
     def emit(
         self, writer: ns.Writer, out_path: Path, config: BenchmarkConfig
     ) -> list[TestResults]:
-        build_rule = ns.escape("build_" + self.name)
         writer.rule(
-            build_rule,
+            "build_feynopt",
             "cd "
             + ns.escape_path(str(self.subject_path))
             + " && cabal build -O2 feynopt",
         )
-        writer.build(self.name, build_rule)
+        writer.build("feynopt", "build_feynopt")
 
         rule = ns.escape(self.name)
         TestSubject.emit_time_rule(
@@ -196,7 +270,7 @@ class FeynmanTestSubject(TestSubject):
             rule,
             "cd "
             + ns.escape_path(str(self.subject_path))
-            + " && cabal exec -v0 feynopt -- -O2 '$in' > '$opt_file' 2> '$log_file'",
+            + " && cabal exec -v0 -O2 feynopt -- -O2 '$in' > '$opt_file' 2> '$log_file'",
             "$time_file",
         )
 
@@ -206,19 +280,24 @@ class FeynmanTestSubject(TestSubject):
             rule_qasm3,
             "cd "
             + ns.escape_path(str(str(self.subject_path)))
-            + " && cabal exec -v0 feynopt -- -O2 -qasm3 '$in' > '$opt_file' 2> '$log_file'",
+            + " && cabal exec -v0 -O2 feynopt -- -O2 -qasm3 '$in' > '$opt_file' 2> '$log_file'",
             "$time_file",
         )
 
         targets = []
         for res in config.resources:
-            qc = res.qc_res or res.qasm_res
-            if qc:
+            if res.qc_res:
                 rule_used = rule
-                input_path = qc
+                input_path = res.qc_res
+                syntax = Syntax.QC
+            elif res.qasm_res:
+                rule_used = rule
+                input_path = res.qasm_res
+                syntax = Syntax.QASM
             elif res.qasm3_res:
                 rule_used = rule_qasm3
                 input_path = res.qasm3_res
+                syntax = Syntax.QASM3
             else:
                 assert not "neither circuit nor program assigned to this resource?"
             opt_path = out_path / (res.name + "_opt" + os.path.splitext(input_path)[1])
@@ -233,7 +312,7 @@ class FeynmanTestSubject(TestSubject):
                 [str(opt_path), str(log_path), str(time_path)],
                 rule_used,
                 [str(input_path)],
-                [self.name],
+                ["feynopt"],
                 variables=vars,
             )
             targets.append(
@@ -242,10 +321,14 @@ class FeynmanTestSubject(TestSubject):
                     subject_name=self.name,
                     resource_name=res.name,
                     run_id=0,
+                    syntax=syntax,
+                    input_path=input_path,
                     opt_path=opt_path,
                     log_path=log_path,
                     time_path=time_path,
                     analysis_path=None,
+                    verify_log_path=None,
+                    verify_time_path=None,
                 )
             )
         return targets
@@ -279,7 +362,9 @@ class MlvoqcTestSubject(TestSubject):
             rule,
             "cd "
             + ns.escape_path(str(self.subject_path))
-            + " && " + ns.escape_path(bench_bin) + " -f '$in' -o '$opt_file' 2>&1 > '$log_file'",
+            + " && "
+            + ns.escape_path(bench_bin)
+            + " -f '$in' -o '$opt_file' 2>&1 > '$log_file'",
             "$time_file",
         )
 
@@ -288,6 +373,7 @@ class MlvoqcTestSubject(TestSubject):
             if res.qasm_res:
                 rule_used = rule
                 input_path = res.qasm_res
+                syntax = Syntax.QASM
             else:
                 continue
             opt_path = out_path / (res.name + "_opt" + os.path.splitext(input_path)[1])
@@ -302,7 +388,7 @@ class MlvoqcTestSubject(TestSubject):
                 [str(opt_path), str(log_path), str(time_path)],
                 rule_used,
                 [str(input_path)],
-                [self.name],
+                [bench_bin],
                 variables=vars,
             )
             targets.append(
@@ -311,14 +397,18 @@ class MlvoqcTestSubject(TestSubject):
                     subject_name=self.name,
                     resource_name=res.name,
                     run_id=0,
+                    syntax=syntax,
+                    input_path=input_path,
                     opt_path=opt_path,
                     log_path=log_path,
                     time_path=time_path,
                     analysis_path=None,
+                    verify_log_path=None,
+                    verify_time_path=None,
                 )
             )
         return targets
-    
+
 
 """
 ./run_quartz circuits/qasm/$X.qasm --eqset quartz/3_2_5_complete_ECC_set.json --output quartz_out/length_simplified_orig$i.qasm
