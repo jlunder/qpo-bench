@@ -291,7 +291,9 @@ void Context::generate_parameter_expressions(
     int max_num_operators_per_expression) {
   assert(max_num_operators_per_expression == 1);
   int num_input_parameters = (int)param_info_->is_parameter_symbolic_.size();
-  assert(num_input_parameters > 0);
+  if (num_input_parameters == 0) {
+    return;
+  }
   if (!param_info_->parameter_expressions_.empty()) {
     std::cerr << "Context::generate_parameter_expressions() called twice for a "
                  "single ParamInfo object. Please use different ParamInfo "

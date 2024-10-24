@@ -13,21 +13,31 @@ using namespace quartz;
 void parse_args(char **argv, int argc, bool &simulated_annealing,
                 bool &early_stop, bool &disable_search,
                 std::string &input_filename, std::string &output_filename,
-                std::string &eqset_filename) {
+                std::string &eqset_filename, double &timeout) {
   assert(argv[1] != nullptr);
   input_filename = std::string(argv[1]);
   early_stop = true;
   for (int i = 2; i < argc; i++) {
     if (!std::strcmp(argv[i], "--output")) {
-      output_filename = std::string(argv[++i]);
+      if (i + 1 < argc) {
+        output_filename = std::string(argv[++i]);
+      }
       continue;
     }
     if (!std::strcmp(argv[i], "--eqset")) {
-      eqset_filename = std::string(argv[++i]);
+      if (i + 1 < argc) {
+        eqset_filename = std::string(argv[++i]);
+      }
       continue;
     }
     if (!std::strcmp(argv[i], "--disable_search")) {
       disable_search = true;
+      continue;
+    }
+    if (!std::strcmp(argv[i], "--timeout")) {
+      if (i + 1 < argc) {
+        timeout = atof(argv[++i]);
+      }
       continue;
     }
   }
@@ -39,18 +49,23 @@ int main(int argc, char **argv) {
   bool simulated_annealing = false;
   bool early_stop = false;
   bool disable_search = false;
+  double timeout = 600;
   parse_args(argv, argc, simulated_annealing, early_stop, disable_search,
-             input_fn, output_fn, eqset_fn);
+             input_fn, output_fn, eqset_fn, timeout);
   auto fn = input_fn.substr(input_fn.rfind('/') + 1);
 
   // Construct contexts
-  Context src_ctx({GateType::h, GateType::ccz, GateType::x, GateType::cx, GateType::t, GateType::tdg,
-                   GateType::input_qubit, GateType::input_param});
+  ParamInfo param_info;
+  Context src_ctx({GateType::h, GateType::ccz, GateType::ccx, GateType::x, GateType::cx,
+                   GateType::t, GateType::tdg, GateType::s, GateType::sdg,
+                   GateType::input_qubit, GateType::input_param},
+                  &param_info);
   Context dst_ctx({GateType::h, GateType::x, GateType::t, GateType::tdg, GateType::add,
-                   GateType::cx, GateType::input_qubit, GateType::input_param});
+                   GateType::cx, GateType::input_qubit, GateType::input_param},
+                  &param_info);
   auto union_ctx = union_contexts(&src_ctx, &dst_ctx);
 
-  auto xfer_pair = GraphXfer::ccz_cx_t_xfer(&union_ctx);
+  auto xfer_pair = GraphXfer::ccz_cx_t_xfer(&src_ctx, &dst_ctx, &union_ctx);
   // Load qasm file
   QASMParser qasm_parser(&src_ctx);
   CircuitSeq *dag = nullptr;
@@ -65,38 +80,27 @@ int main(int argc, char **argv) {
       GateType::rz, xfer_pair.first, xfer_pair.second);
   //   graph_before_search->to_qasm(input_fn + ".toffoli_flip", false, false);
 
-  auto end = std::chrono::steady_clock::now();
-  if (disable_search) {
-    std::cout << "Optimization results of Quartz for " << fn
-              << " on Clifford+T gate set."
-              << " Gate count after optimization: "
-              << graph_before_search->gate_count() << ", "
-              << "Circuit depth: " << graph_before_search->circuit_depth()
-              << ", "
-              << (double)std::chrono::duration_cast<std::chrono::milliseconds>(
-                     end - start)
-                         .count() /
-                     1000.0
-              << " seconds." << std::endl;
-
-    return 0;
-  }
-
   // Optimization
-  auto graph_after_search =
-      graph_before_search->optimize(&dst_ctx, eqset_fn, fn, /*print_message=*/
-                                    true);
-  end = std::chrono::steady_clock::now();
+  std::shared_ptr<Graph> optimized_graph;
+  if (disable_search) {
+    optimized_graph = graph_before_search;
+  } else {
+    graph_before_search->optimize(&dst_ctx, eqset_fn, fn, /*print_message=*/
+                                  true, nullptr, -1.0, timeout);
+  }
+  auto end = std::chrono::steady_clock::now();
   std::cout << "Optimization results of Quartz for " << fn
             << " on Clifford+T gate set."
             << " Gate count after optimization: "
-            << graph_after_search->gate_count() << ", "
-            << "Circuit depth: " << graph_after_search->circuit_depth() << ", "
+            << optimized_graph->gate_count() << ", "
+            << "Circuit depth: " << optimized_graph->circuit_depth() << ", "
             << (double)std::chrono::duration_cast<std::chrono::milliseconds>(
                    end - start)
                        .count() /
                    1000.0
             << " seconds." << std::endl;
-  graph_after_search->to_qasm(output_fn, false, false);
+  optimized_graph->to_qasm(output_fn, false, false);
+
+  return 0;
 }
 
