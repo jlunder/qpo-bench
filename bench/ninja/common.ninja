@@ -1,0 +1,93 @@
+time_flags = -q -f '{"user": %U, "system": %S, "elapsed": %e, $
+    "avgtext": %X, "avgdata": %D, "avgstack": %p, "maxresident": %M, $
+    "swaps": %W, "status": %x}'
+
+subject_root_feynman = ${bench_root}/feynman
+subject_root_mlvoqc = ${bench_root}/mlvoqc
+subject_root_quartz = ${bench_root}/quartz
+subject_root_queso = ${bench_root}/queso
+subject_root_quizx = ${bench_root}/quizx
+
+# analysis and verification
+
+rule build_feyncount
+    command = cd ${subject_root_feynman} && cabal build -O2 feyncount
+
+build feyncount: build_feyncount
+
+rule feyncount_analyze
+    command = /bin/time ${time_flags} -o '${analysis_time_file}' -- $
+        /bin/sh -c '$
+            cd ${subject_root_feynman} && $
+            cabal exec -v0 -O2 feyncount -- '\''${in}'\'' $
+                > '\''${analysis_file}'\'' 2> '\''${analysis_log_file}'\'' $
+            '
+
+rule feyncount_qasm3_analyze
+    command = /bin/time ${time_flags} -o '${analysis_time_file}' -- $
+        /bin/sh -c '$
+            cd ${subject_root_feynman} && $
+            cabal exec -v0 -O2 feyncount -- -qasm3 '\''${in}'\'' $
+                > '\''${analysis_file}'\'' 2> '\''${analysis_log_file}'\'' $
+            '
+
+rule build_feynver
+    command = cd ${subject_root_feynman} && cabal build -O2 feynver
+
+build feynver: build_feynver
+
+rule feynver_verify
+    command = /bin/time ${time_flags} -o '${verif_time_file}' -- $
+        /bin/sh -c '$
+            cd ${subject_root_feynman} && $
+            cabal exec -v0 -O2 feynver -- '\''${ref_file}'\'' '\''${opt_file}'\'' $
+                > '\''${verif_result_file}'\'' 2> '\''${verif_log_file}'\'' $
+            '
+
+rule feynver_qasm3_verify
+    command = /bin/time ${time_flags} -o '${verif_time_file}' -- $
+        /bin/sh -c '$
+            cd ${subject_root_feynman} && $
+            cabal exec -v0 -O2 feynver -- -qasm3 '\''${ref_file}'\'' '\''${opt_file}'\'' $
+                > '\''${verif_result_file}'\'' 2> '\''${verif_log_file}'\'' $
+            '
+
+# feynman
+
+rule build_feynopt
+    command = cd ${subject_root_feynman} && cabal build -O2 feynopt
+
+build feynopt: build_feynopt
+
+rule feynopt
+    command = /bin/time ${time_flags} -o '$time_file' -- $
+        /bin/sh -c '$
+            cd ${subject_root_feynman} && $
+            cabal exec -v0 -O2 feynopt -- -ppf '\''$in'\'' $
+                > '\''$opt_file'\'' 2> '\''$log_file'\'' $
+            '
+
+rule feynopt_qasm3
+    command = /bin/time ${time_flags} -o '$time_file' -- $
+        /bin/sh -c '$
+            cd ${subject_root_feynman} && $
+            cabal exec -v0 -O2 feynopt -- -ppf -qasm3 '\''$in'\'' $
+                > '\''$opt_file'\'' 2> '\''$log_file'\'' $
+            '
+
+# mlvoqc
+
+bench_voqc_bin = ${subject_root_mlvoqc}/_build/default/bench_voqc.exe
+
+rule build_mlvoqc
+    command = cd ${subject_root_mlvoqc} && dune build bench_voqc.exe
+
+build ${bench_voqc_bin}: build_mlvoqc
+
+rule bench_voqc
+    command = /bin/time ${time_flags} -o '$time_file' -- $
+        /bin/sh -c '$
+            cd ${subject_root_mlvoqc} && $
+            '\''${bench_voqc_bin}'\'' -f '\''$in'\'' -o '\''$opt_file'\'' $
+                2>&1 > '\''$log_file'\'' $
+            '
