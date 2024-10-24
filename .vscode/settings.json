@@ -1,9 +1,11 @@
 {
     "files.associations": {
-        "*.tcc": "cpp"
+        "*.tcc": "cpp",
+        "iostream": "cpp"
     },
     "ocaml.sandbox": {
         "kind": "global"
     },
-    "python.terminal.activateEnvInCurrentTerminal": true
+    "python.terminal.activateEnvInCurrentTerminal": true,
+    "cmake.sourceDirectory": "/home/jlunder/workspaces/sfu-qc/repos/qpo-bench/quartz"
 }

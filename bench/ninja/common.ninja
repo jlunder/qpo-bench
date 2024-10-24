@@ -63,31 +63,70 @@ rule feynopt
     command = /bin/time ${time_flags} -o '$time_file' -- $
         /bin/sh -c '$
             cd ${subject_root_feynman} && $
-            cabal exec -v0 -O2 feynopt -- -ppf '\''$in'\'' $
-                > '\''$opt_file'\'' 2> '\''$log_file'\'' $
+            cabal exec -v0 -O2 feynopt -- ${opt_params} '\''${in}'\'' $
+                > '\''${opt_file}'\'' 2> '\''${log_file}'\'' $
             '
 
 rule feynopt_qasm3
     command = /bin/time ${time_flags} -o '$time_file' -- $
         /bin/sh -c '$
             cd ${subject_root_feynman} && $
-            cabal exec -v0 -O2 feynopt -- -ppf -qasm3 '\''$in'\'' $
-                > '\''$opt_file'\'' 2> '\''$log_file'\'' $
+            cabal exec -v0 -O2 feynopt -- ${opt_params} -qasm3 '\''${in}'\'' $
+                > '\''${opt_file}'\'' 2> '\''${log_file}'\'' $
             '
 
 # mlvoqc
 
-bench_voqc_bin = ${subject_root_mlvoqc}/_build/default/bench_voqc.exe
+mlvoqc_bench_voqc = ${subject_root_mlvoqc}/_build/default/bench_voqc.exe
 
-rule build_mlvoqc
+rule mlvoqc_dune_build
     command = cd ${subject_root_mlvoqc} && dune build bench_voqc.exe
 
-build ${bench_voqc_bin}: build_mlvoqc
+build ${mlvoqc_bench_voqc}: mlvoqc_dune_build
 
 rule bench_voqc
     command = /bin/time ${time_flags} -o '$time_file' -- $
         /bin/sh -c '$
             cd ${subject_root_mlvoqc} && $
-            '\''${bench_voqc_bin}'\'' -f '\''$in'\'' -o '\''$opt_file'\'' $
+            '\''${mlvoqc_bench_voqc}'\'' -f '\''$in'\'' -o '\''$opt_file'\'' $
                 2>&1 > '\''$log_file'\'' $
             '
+
+# quartz
+
+quartz_build = ${subject_root_quartz}/build
+quartz_makefile = ${quartz_build}/Makefile
+quartz_gen_ecc_set = ${quartz_build}/gen_ecc_set
+quartz_bench_quartz = ${quartz_build}/bench_quartz
+quartz_ecc_set = ${subject_root_quartz}/eccset/Clifford_T_5_3_complete_ECC_set.json
+
+rule quartz_mkdir
+    command = mkdir -p ${out}
+
+rule quartz_cmake
+    command = cd ${quartz_build} && cmake ..
+
+rule quartz_make
+    command = cd ${quartz_build} && make -j6 ${make_target}
+
+rule quartz_gen_ecc_set
+    command = cd ${quartz_build} && ./gen_ecc_set
+
+build ${quartz_build}: quartz_mkdir
+build ${quartz_makefile}: quartz_cmake | ${quartz_build}
+build ${quartz_gen_ecc_set}: quartz_make | ${quartz_makefile}
+    make_target = gen_ecc_set
+build ${quartz_bench_quartz}: quartz_make | ${quartz_makefile}
+    make_target = bench_quartz
+build ${quartz_ecc_set}: quartz_gen_ecc_set | ${quartz_gen_ecc_set}
+
+rule bench_quartz
+    command = /bin/time ${time_flags} -o '${time_file}' -- $
+        /bin/sh -c '$
+            cd ${subject_root_quartz} && $
+            '\''${quartz_bench_quartz}'\'' '\''${in}'\'' $
+                --eqset '\''${quartz_ecc_set}'\'' $
+                --output '\''${opt_file}'\'' --timeout 60 $
+                2>&1 > '\''${log_file}'\'' $
+            '
+

@@ -197,6 +197,28 @@ class Benchmark:
 class FeynmanTestSubject(TestSubject):
     name = "feynman"
 
+    opt_params: str
+
+    def __init__(self, opt_params: str = "-ppf"):
+        self.opt_params = opt_params
+
+    select_syntax = TestSubject.select_any_syntax
+
+    def emit_test(self, w: ns.Writer, t: TestResults):
+        w.build(
+            [str(t.opt_path), str(t.log_path), str(t.time_path)],
+            "feynopt_qasm3" if t.syntax == Syntax.QASM3 else "feynopt",
+            [str(t.ref_path)],
+            ["feynopt"],
+            variables={
+                "opt_params": self.opt_params,
+                "opt_file": ns.escape_path(str(t.opt_path)),
+                "log_file": ns.escape_path(str(t.log_path)),
+                "time_file": ns.escape_path(str(t.time_path)),
+            },
+        )
+        return t
+
     def emit_analysis(
         self,
         w: ns.Writer,
@@ -207,7 +229,7 @@ class FeynmanTestSubject(TestSubject):
     ) -> AnalysisResults:
         base = ref_path.stem
         analysis_path = out_path / f"{base}_{syntax}_analysis.json"
-        log_path = out_path / f"{base}_{syntax}_analysis_stderr.log"
+        log_path = out_path / f"{base}_{syntax}_analysis.log"
         time_path = out_path / f"{base}_{syntax}_analysis_time.json"
         vars = {
             "analysis_file": ns.escape_path(str(analysis_path)),
@@ -234,48 +256,31 @@ class FeynmanTestSubject(TestSubject):
             resource_name, syntax, ref_path, analysis_path, log_path, time_path
         )
 
-    # def emit_verify(
-    #     self, w: ns.Writer, out_path: Path, to_verify: list[TestResults]
-    # ) -> list[TestResults]:
-    #     verified_result = []
-    #     for result in to_verify:
-    #         verify_log_path = out_path / (res.name + "_verify_stderr.log")
-    #         verify_time_path = out_path / (res.name + "_verify_time.json")
-    #         vars = {
-    #             "ref_file": ns.escape_path(str(result.ref_path)),
-    #             "log_file": ns.escape_path(str(verify_log_path)),
-    #             "time_file": ns.escape_path(str(verify_time_path)),
-    #         }
-    #         w.build(
-    #             [str(verify_log_path), str(verify_time_path)],
-    #             "feynver_verify",
-    #             [str(result.opt_path)],
-    #             ["feynver", str(result.ref_path)],
-    #             variables=vars,
-    #         )
-    #         verified_result.append(
-    #             replace(
-    #                 result,
-    #                 verify_log_path=verify_log_path,
-    #                 verify_time_path=verify_time_path,
-    #             )
-    #         )
-
-    select_syntax = TestSubject.select_any_syntax
-
-    def emit_test(self, w: ns.Writer, t: TestResults):
-        w.build(
-            [str(t.opt_path), str(t.log_path), str(t.time_path)],
-            "feynopt_qasm3" if t.syntax == Syntax.QASM3 else "feynopt",
-            [str(t.ref_path)],
-            ["feynopt"],
-            variables={
-                "opt_file": ns.escape_path(str(t.opt_path)),
-                "log_file": ns.escape_path(str(t.log_path)),
-                "time_file": ns.escape_path(str(t.time_path)),
-            },
-        )
-        return t
+    def emit_verify(
+        self, w: ns.Writer, out_path: Path, to_verify: list[TestResults]
+    ) -> list[TestResults]:
+        verified_result = []
+        for result in to_verify:
+            verify_log_path = out_path / (res.name + "_verify.log")
+            verify_time_path = out_path / (res.name + "_verify_time.json")
+            w.build(
+                [str(verify_log_path), str(verify_time_path)],
+                "feynver_verify",
+                [str(result.opt_path)],
+                ["feynver", str(result.ref_path)],
+                variables={
+                    "ref_file": ns.escape_path(str(result.ref_path)),
+                    "log_file": ns.escape_path(str(verify_log_path)),
+                    "time_file": ns.escape_path(str(verify_time_path)),
+                },
+            )
+            verified_result.append(
+                replace(
+                    result,
+                    verify_log_path=verify_log_path,
+                    verify_time_path=verify_time_path,
+                )
+            )
 
 
 class MlvoqcTestSubject(TestSubject):
@@ -302,22 +307,25 @@ class MlvoqcTestSubject(TestSubject):
         return t
 
 
-"""
-./run_quartz circuits/qasm/$X.qasm --eqset quartz/3_2_5_complete_ECC_set.json --output quartz_out/length_simplified_orig$i.qasm
-"""
-
-
 class QuartzTestSubject(TestSubject):
     name = "quartz"
 
-    select_syntax = TestSubject.select_qc_syntax
+    @property
+    def bench_quartz_bin_path(self) -> Path:
+        return self.subject_path / "build/bench_quartz"
+
+    @property
+    def bench_quartz_ecc_set_path(self) -> Path:
+        return self.subject_path / "eccset/Clifford_T_5_3_complete_ECC_set.json"
+
+    select_syntax = TestSubject.select_qasm_syntax
 
     def emit_test(self, w: ns.Writer, t: TestResults) -> TestResults:
         w.build(
             [str(t.opt_path), str(t.log_path), str(t.time_path)],
-            "bench_voqc",
+            "bench_quartz",
             [str(t.ref_path)],
-            [str(self.bench_bin_path)],
+            [str(self.bench_quartz_bin_path), str(self.bench_quartz_ecc_set_path)],
             variables={
                 "opt_file": ns.escape_path(str(t.opt_path)),
                 "log_file": ns.escape_path(str(t.log_path)),
@@ -387,9 +395,9 @@ subject_ctors_by_name: dict[str, Callable] = dict(
             FeynmanTestSubject,
             MlvoqcTestSubject,
             # PyzxTestSubject,
-            # QuartzTestSubject,
-            # QuesoTestSubject,
-            # QuizxTestSubject,
+            QuartzTestSubject,
+            QuesoTestSubject,
+            QuizxTestSubject,
             # ToptTestSubject,
             # VvQcoTestSubject,
         ]
@@ -464,7 +472,7 @@ def make_benchmark(
 benchmark_ctors_by_name: dict[str, Callable] = {
     "minimal": lambda: make_benchmark(
         "minimal",
-        ["feynman", "mlvoqc"],
+        ["feynman", "mlvoqc", "quartz"],
         [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
         ["qft_4", "tof_4"] + ["if-simple", "loop-simple"],
     ),
@@ -588,16 +596,23 @@ def run_benchmark(b: Benchmark):
                 t = s.select_syntax(b.config, r, t)
                 if t == None:
                     continue
-                t = replace(
-                    t,
-                    opt_path=out_path / f"{r.name}_opt{t.ref_path.suffix}",
-                    log_path=out_path / f"{r.name}_stderr.log",
-                    time_path=out_path / f"{r.name}_time.json",
-                )
                 if b.config.repeat_count == 1:
+                    t = replace(
+                        t,
+                        opt_path=out_path / f"{r.name}_opt{t.ref_path.suffix}",
+                        log_path=out_path / f"{r.name}_opt.log",
+                        time_path=out_path / f"{r.name}_opt_time.json",
+                    )
                     targets.append(s.emit_test(w, t))
                 else:
                     for i in range(b.config.repeat_count):
+                        t = replace(
+                            t,
+                            opt_path=out_path
+                            / f"{r.name}_opt_{t.run_id}{t.ref_path.suffix}",
+                            log_path=out_path / f"{r.name}_opt_{t.run_id}.log",
+                            time_path=out_path / f"{r.name}_opt_{t.run_id}_time.json",
+                        )
                         targets.append(s.emit_test(w, replace(t, run_id=i)))
 
         # Figure out which resources (refs) are used by the targets, and

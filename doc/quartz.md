@@ -2,7 +2,8 @@
 
 ```
 apt install build-essential cmake
-apt install pybind11-dev
+apt install pybind11-dev python3-z3
+# beware if you're z3py installing via pip, you need "z3-solver", not "z3" -- that's something else!
 
 mkdir build
 cd build
