@@ -4,6 +4,7 @@
 |----------------|---------------|------------------|--------------|
 | feynman | https://github.com/meamy/feynman.git | ara | [Feynman github](https://github.com/meamy/feynman) |
 | mlvoqc | https://github.com/inQWIRE/mlvoqc.git | main | [mlvoqc github](https://github.com/inQWIRE/mlvoqc) |
+| pyzx | https://github.com/zxcalc/pyzx.git | master | [PyZX github](https://github.com/zxcalc/pyzx) |
 | quartz | https://github.com/quantum-compiler/quarz.git | master | [Quartz github](https://github.com/quantum-compiler/quartz) |
 | quartz/external/HiGHS | https://github.com/ERGO-Code/HiGHS.git | master | [HiGHS github](https://github.com/ERGO-Code/HiGHS) |
 | queso | https://github.com/qqq-wisc/queso.git | main | [QUESO github](https://github.com/qqq-wisc/queso) |

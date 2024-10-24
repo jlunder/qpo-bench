@@ -205,7 +205,7 @@ class FeynmanTestSubject(TestSubject):
     def emit_test(self, w: ns.Writer, t: TestResults):
         w.build(
             [str(t.opt_path), str(t.log_path), str(t.time_path)],
-            "feynopt_qasm3" if t.syntax == Syntax.QASM3 else "feynopt",
+            "bench_feynopt_qasm3" if t.syntax == Syntax.QASM3 else "bench_feynopt",
             [str(t.ref_path)],
             ["feynopt"],
             variables={
@@ -293,7 +293,7 @@ class MlvoqcTestSubject(TestSubject):
     def emit_test(self, w: ns.Writer, t: TestResults) -> TestResults:
         w.build(
             [str(t.opt_path), str(t.log_path), str(t.time_path)],
-            "bench_voqc",
+            "bench_mlvoqc",
             [str(t.ref_path)],
             [str(self.bench_bin_path)],
             variables={
@@ -333,12 +333,6 @@ class QuartzTestSubject(TestSubject):
         return t
 
 
-"""
-java --enable-preview -cp queso/SymbolicOptimizer-1.0-SNAPSHOT-jar-with-dependencies.jar \
-  Applier -c circuits/qasm/$X.qasm -g nam -r queso/rules_q3_s6_nam.txt -sr queso/rules_q3_s6_nam_symb.txt -t $QUESO_TIMEOUT_SEC -o queso_out -j "nam" > queso_out/$X
-"""
-
-
 class QuesoTestSubject(TestSubject):
     path: Path = Path("queso")
 
@@ -357,11 +351,6 @@ class QuesoTestSubject(TestSubject):
             },
         )
         return t
-
-
-"""
-./run_quizx circuits/qasm/$X.qasm > quizx_out/$X.qasm
-"""
 
 
 class QuizxTestSubject(TestSubject):
@@ -409,9 +398,7 @@ def make_subject(name: str) -> TestSubject:
         s.name = name
         # The sanity check right now just tests if there's a folder for the subject
         if not s.subject_path.is_dir():
-            raise Exception(
-                f"Didn't find subject dir at '{s.subject_path}')"
-            )
+            raise Exception(f"Didn't find subject dir at '{s.subject_path}')")
         subjects[name] = s
     return s
 
@@ -470,7 +457,7 @@ benchmark_ctors_by_name: dict[str, Callable] = {
         "minimal",
         ["feynman", "feynman-ppf", "mlvoqc", "quartz"],
         [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
-        ["qft_4", "tof_4"] + ["if-simple", "loop-simple"],
+        ["qft_4", "tof_4", "mod_adder_1024"] + ["if-simple", "loop-simple"],
     ),
     "popl25": lambda: make_benchmark(
         "popl25",
@@ -579,22 +566,27 @@ class DataRow:
 import json
 
 
-def read_analysis_results(
-    analysis: Iterable[AnalysisResults],
-) -> Iterable[tuple[int, float, float, float, int, int]]:
+def read_analysis_results(analysis_path: Path) -> int | None:
     t_gates = None
+    try:
+        # This is carefully set up to explode spectacularly if the file is
+        # empty or otherwise missing expected stuff, but not having the T
+        # gate entry is normal if there are 0 T's, so that's defaulted
+        res = json.load(open(analysis_path, "r"))
+        t_gates = int(res["gates"].get("T", 0))
+    except:
+        pass
+    return t_gates
+
+
+def read_time_results(time_path: Path):
     user_time = None
     sys_time = None
     elapsed_time = None
     max_resident = None
     status = None
     try:
-        res = json.load(open(analysis.results_path, "r"))
-        t_gates = int(res["gates"]["T"])
-    except:
-        pass
-    try:
-        res = json.load(open(analysis.time_path, "r"))
+        res = json.load(open(time_path, "r"))
         user_time = float(res["user"])
         sys_time = float(res["system"])
         elapsed_time = float(res["elapsed"])
@@ -602,7 +594,7 @@ def read_analysis_results(
         status = int(res["status"])
     except:
         pass
-    return (t_gates, user_time, sys_time, elapsed_time, max_resident, status)
+    return (user_time, sys_time, elapsed_time, max_resident, status)
 
 
 def run_benchmark(b: Benchmark):
@@ -717,7 +709,8 @@ def run_benchmark(b: Benchmark):
     ref_rows: dict[tuple[str, str], tuple[DataRow, AnalysisResults]] = {}
 
     for a in refs_analysis:
-        t_gates, _, _, _, _, status = read_analysis_results(a)
+        t_gates = read_analysis_results(a.results_path)
+        (_, _, _, _, status) = read_time_results(a.time_path)
         r = DataRow(
             b.name,
             "ref",
@@ -738,8 +731,11 @@ def run_benchmark(b: Benchmark):
         ref = ref_rows.get((t.resource_name, t.syntax), None)
         if ref != None:
             ref_t_gates = ref[0].t_gates
-        t_gates, user_time, sys_time, elapsed_time, max_resident, status = (
-            read_analysis_results(t.opt_analysis)
+        t_gates = read_analysis_results(
+            t.opt_analysis.results_path if t.opt_analysis != None else None
+        )
+        (user_time, sys_time, elapsed_time, max_resident, status) = read_time_results(
+            t.time_path
         )
         rows.append(
             DataRow(
