@@ -139,16 +139,13 @@ class TestResults:
 # The TestSubject is almost-but-not-quite the thing that runs the benchmark:
 # we use ninja as our build backend, and this class generates syntax that
 # instructs it on how to actually conduct the test.
-@dataclass(frozen=True)
 class TestSubject:
-    @property
-    def name(self):
-        return self.__class__.name
+    name: str = None
 
     @property
     def subject_path(self) -> Path:
         global args
-        return (args.run_path / self.name).resolve()
+        return (args.run_path / self.path).resolve()
 
     def select_syntax(
         self, c: BenchmarkConfig, r: Resource, t: TestResults
@@ -196,11 +193,11 @@ class Benchmark:
 
 
 class FeynmanTestSubject(TestSubject):
-    name = "feynman"
+    path: Path = Path("feynman")
 
     opt_params: str
 
-    def __init__(self, opt_params: str = "-ppf"):
+    def __init__(self, opt_params: str):
         self.opt_params = opt_params
 
     select_syntax = TestSubject.select_any_syntax
@@ -285,7 +282,7 @@ class FeynmanTestSubject(TestSubject):
 
 
 class MlvoqcTestSubject(TestSubject):
-    name = "mlvoqc"
+    path: Path = Path("mlvoqc")
 
     @property
     def bench_bin_path(self) -> Path:
@@ -309,7 +306,7 @@ class MlvoqcTestSubject(TestSubject):
 
 
 class QuartzTestSubject(TestSubject):
-    name = "quartz"
+    path: Path = Path("quartz")
 
     @property
     def bench_quartz_bin_path(self) -> Path:
@@ -343,7 +340,7 @@ java --enable-preview -cp queso/SymbolicOptimizer-1.0-SNAPSHOT-jar-with-dependen
 
 
 class QuesoTestSubject(TestSubject):
-    name = "queso"
+    path: Path = Path("queso")
 
     select_syntax = TestSubject.select_qc_syntax
 
@@ -368,7 +365,7 @@ class QuesoTestSubject(TestSubject):
 
 
 class QuizxTestSubject(TestSubject):
-    name = "quizx"
+    path: Path = Path("quizx")
 
     select_syntax = TestSubject.select_qc_syntax
 
@@ -389,36 +386,34 @@ class QuizxTestSubject(TestSubject):
 
 subjects: dict[str, TestSubject] = {}
 
-subject_ctors_by_name: dict[str, Callable] = dict(
-    [
-        (ctor.name, ctor)
-        for ctor in [
-            FeynmanTestSubject,
-            MlvoqcTestSubject,
-            # PyzxTestSubject,
-            QuartzTestSubject,
-            QuesoTestSubject,
-            QuizxTestSubject,
-            # ToptTestSubject,
-            # VvQcoTestSubject,
-        ]
-    ]
-)
+subject_ctors_by_name: dict[str, Callable] = {
+    "feynman": (lambda: FeynmanTestSubject("-O2")),
+    "feynman-apf": (lambda: FeynmanTestSubject("-apf")),
+    "feynman-ppf": (lambda: FeynmanTestSubject("-ppf")),
+    "mlvoqc": MlvoqcTestSubject,
+    # "pyzx": PyzxTestSubject,
+    "quartz": QuartzTestSubject,
+    "queso": QuesoTestSubject,
+    "quizx": QuizxTestSubject,
+    # "topt": ToptTestSubject,
+    # "vv-qco": VvQcoTestSubject,
+}
 
 
 def make_subject(name: str) -> TestSubject:
     global subjects, subject_ctors_by_name
 
-    if not name in subjects:
+    s = subjects.get(name)
+    if s == None:
+        s: TestSubject = subject_ctors_by_name[name]()
+        s.name = name
         # The sanity check right now just tests if there's a folder for the subject
-        norm_subject_dir = (args.run_path / name).resolve()
-        if not norm_subject_dir.is_dir():
+        if not s.subject_path.is_dir():
             raise Exception(
-                f"Didn't find subject dir at '{norm_subject_dir}' (normalized "
-                + f"from '{args.bench_build / args.bench_root / name}')"
+                f"Didn't find subject dir at '{s.subject_path}')"
             )
-        subjects[name] = subject_ctors_by_name[name]()
-    return subjects[name]
+        subjects[name] = s
+    return s
 
 
 resources: dict[str, Resource] = {}
@@ -473,13 +468,19 @@ def make_benchmark(
 benchmark_ctors_by_name: dict[str, Callable] = {
     "minimal": lambda: make_benchmark(
         "minimal",
-        ["feynman", "mlvoqc", "quartz"],
+        ["feynman", "feynman-ppf", "mlvoqc", "quartz"],
         [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
         ["qft_4", "tof_4"] + ["if-simple", "loop-simple"],
     ),
     "popl25": lambda: make_benchmark(
         "popl25",
-        ["feynman"],
+        [
+            "feynman",
+            "feynman-apf",
+            "feynman-ppf",
+            "mlvoqc",
+            "quartz",  # ,"queso","pyzx", "vv-qco",
+        ],
         [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
         [
             "grover_5",
@@ -630,7 +631,7 @@ def run_benchmark(b: Benchmark):
         tests: list[TestResults] = []
         for s in b.subjects:
             out_path = build_path / s.name
-            os.makedirs(build_path / s.name)
+            os.makedirs(out_path)
             for r in b.config.resources:
                 t = TestResults(
                     run_id=0,
