@@ -38,7 +38,7 @@ class Args:
 
     run_ts: datetime = start_time
     bench_ts: str = start_time.strftime("%Y-%m-%d_%H-%M-%S")
-    run_path: Path = Path(os.path.abspath(os.curdir))
+    run_path: Path = Path(os.curdir).absolute()
     bench_bench: Path = Path("bench")
     bench_build: Path = Path("bench/build")
     # Relative to bench_build!
@@ -100,19 +100,39 @@ class BenchmarkConfig:
 
 
 @dataclass(frozen=True, order=True)
+class AnalysisResults:
+    resource_name: str
+    syntax: Syntax
+    in_path: Path
+    results_path: Path
+    log_path: Path
+    time_path: Path
+
+
+@dataclass(frozen=True, order=True)
+class VerifResults:
+    resource_name: str
+    syntax: Syntax
+    ref_path: Path
+    opt_path: Path
+    results_path: Path
+    log_path: Path
+    time_path: Path
+
+
+@dataclass(frozen=True, order=True)
 class TestResults:
     benchmark_name: str
     subject_name: str
     resource_name: str
     run_id: int
     syntax: Syntax
-    input_path: Path
+    ref_path: Path
     opt_path: Path
     log_path: Path
     time_path: Path
-    analysis_path: Path | None
-    verify_log_path: Path | None
-    verify_time_path: Path | None
+    opt_analysis: AnalysisResults | None = None
+    verif: VerifResults | None = None
 
 
 # The TestSubject is almost-but-not-quite the thing that runs the benchmark:
@@ -126,9 +146,7 @@ class TestSubject:
     @staticmethod
     def make_subject_path(name: str):
         global args
-        return Path(
-            os.path.normpath(args.run_path / args.bench_build / args.bench_root / name)
-        )
+        return (args.run_path / args.bench_build / args.bench_root / name).resolve()
 
     # Write a ninja snippet to run the actual test and collect output; output
     # is a list of with the full paths of the optimized files
@@ -143,7 +161,7 @@ class TestSubject:
         rule_name: str,
         escaped_command: str,
         time_file_var: str,
-        **kw_args
+        **kw_args,
     ):
         time_outputs = {
             "user": "%U",
@@ -156,19 +174,13 @@ class TestSubject:
             "swaps": "%W",
             "status": "%x",
         }
-        time_outputs_str = ", ".join(
-            ['"%s": %s' % (k, v) for k, v in time_outputs.items()]
-        )
+        time_outputs_str = ", ".join([f'"{k}": {v}' for k, v in time_outputs.items()])
         writer.rule(
             rule_name,
-            "time -q -f '{"
-            + ns.escape(time_outputs_str)
-            + "}' -o '"
-            + time_file_var
-            + "' /bin/sh -c '"
-            + escaped_command.replace("'", "'\\''")
-            + "'",
-            **kw_args
+            f"time -q -f '{{{ns.escape(time_outputs_str)}}}' "
+            + f"-o '{time_file_var}' /bin/sh -c "
+            + f"'{escaped_command.replace("'", "'\\''")}'",
+            **kw_args,
         )
 
 
@@ -188,43 +200,87 @@ class FeynmanTestSubject(TestSubject):
             subject_path=TestSubject.make_subject_path(self.__class__.name),
         )
 
-    # def emit_analyze_dependencies(self, writer: ns.Writer) -> None:
-    #     writer.rule(
-    #         "build_feynver",
-    #         "cd "
-    #         + ns.escape_path(str(self.subject_path))
-    #         + " && cabal build -O2 feynver",
-    #     )
-    #     writer.build("feynver", "build_feynver")
+    def emit_analysis_dependencies(self, writer: ns.Writer) -> None:
+        writer.rule(
+            "build_feyncount",
+            f"cd {ns.escape_path(str(self.subject_path))} && "
+            + "cabal build -O2 feyncount",
+        )
+        writer.build("feyncount", "build_feyncount")
 
-    #     rule = ns.escape(self.name)
-    #     TestSubject.emit_time_rule(
-    #         writer,
-    #         "feynver_verify",
-    #         "cd "
-    #         + ns.escape_path(str(self.subject_path))
-    #         + " && cabal exec -v0 feynver -O2 -- -O2 '$in' > '$opt_file' 2> '$verify_log_file'",
-    #         "$verify_time_file",
-    #     )
+        rule = ns.escape(self.name)
+        TestSubject.emit_time_rule(
+            writer,
+            "feyncount_analyze",
+            f"cd {ns.escape_path(str(self.subject_path))} && "
+            + "cabal exec -v0 feyncount -O2 -- '$in' "
+            + "> '$analysis_file' 2> '$analysis_log_file'",
+            "$analysis_time_file",
+        )
 
-    # def emit_verify_dependencies(self, writer: ns.Writer) -> None:
-    #     writer.rule(
-    #         "build_feynver",
-    #         "cd "
-    #         + ns.escape_path(str(self.subject_path))
-    #         + " && cabal build -O2 feynver",
-    #     )
-    #     writer.build("feynver", "build_feynver")
+        rule = ns.escape(self.name)
+        TestSubject.emit_time_rule(
+            writer,
+            "feyncount_qasm3_analyze",
+            f"cd {ns.escape_path(str(self.subject_path))} && "
+            + "cabal exec -v0 feyncount -O2 -- -qasm3 '$in' "
+            + "> '$analysis_file' 2> '$analysis_log_file'",
+            "$analysis_time_file",
+        )
 
-    #     rule = ns.escape(self.name)
-    #     TestSubject.emit_time_rule(
-    #         writer,
-    #         "feynver_verify",
-    #         "cd "
-    #         + ns.escape_path(str(self.subject_path))
-    #         + " && cabal exec -v0 feynver -O2 -- -O2 '$in' > '$opt_file' 2> '$verify_log_file'",
-    #         "$verify_time_file",
-    #     )
+    def emit_analysis(
+        self,
+        writer: ns.Writer,
+        resource_name: str,
+        out_path: Path,
+        syntax: Syntax,
+        ref_path: Path,
+    ) -> AnalysisResults:
+        base = ref_path.stem
+        analysis_path = out_path / f"{base}_{syntax}_analysis.json"
+        log_path = out_path / f"{base}_{syntax}_analysis_stderr.log"
+        time_path = out_path / f"{base}_{syntax}_analysis_time.json"
+        vars = {
+            "analysis_file": ns.escape_path(str(analysis_path)),
+            "analysis_log_file": ns.escape_path(str(log_path)),
+            "analysis_time_file": ns.escape_path(str(time_path)),
+        }
+        if syntax == Syntax.QASM3:
+            writer.build(
+                [str(analysis_path), str(log_path), str(time_path)],
+                "feyncount_qasm3_analyze",
+                [str(ref_path)],
+                ["feyncount"],
+                variables=vars,
+            )
+        else:
+            writer.build(
+                [str(analysis_path), str(log_path), str(time_path)],
+                "feyncount_analyze",
+                [str(ref_path)],
+                ["feyncount"],
+                variables=vars,
+            )
+        return AnalysisResults(
+            resource_name, syntax, ref_path, analysis_path, log_path, time_path
+        )
+
+    def emit_verif_dependencies(self, writer: ns.Writer) -> None:
+        writer.rule(
+            "build_feynver",
+            f"cd {ns.escape_path(str(self.subject_path))} && cabal build -O2 feynver",
+        )
+        writer.build("feynver", "build_feynver")
+
+        rule = ns.escape(self.name)
+        TestSubject.emit_time_rule(
+            writer,
+            "feynver_verify",
+            f"cd {ns.escape_path(str(self.subject_path))} && "
+            + "cabal exec -v0 feynver -O2 -- '$ref_file' '$opt_file' "
+            + "> '$verif_result_file' 2> '$verif_log_file'",
+            "$verif_time_file",
+        )
 
     # def emit_verify(
     #     self, writer: ns.Writer, out_path: Path, to_verify: list[TestResults]
@@ -234,7 +290,7 @@ class FeynmanTestSubject(TestSubject):
     #         verify_log_path = out_path / (res.name + "_verify_stderr.log")
     #         verify_time_path = out_path / (res.name + "_verify_time.json")
     #         vars = {
-    #             "ref_file": ns.escape_path(str(result.input_path)),
+    #             "ref_file": ns.escape_path(str(result.ref_path)),
     #             "log_file": ns.escape_path(str(verify_log_path)),
     #             "time_file": ns.escape_path(str(verify_time_path)),
     #         }
@@ -242,7 +298,7 @@ class FeynmanTestSubject(TestSubject):
     #             [str(verify_log_path), str(verify_time_path)],
     #             "feynver_verify",
     #             [str(result.opt_path)],
-    #             ["feynver", str(result.input_path)],
+    #             ["feynver", str(result.ref_path)],
     #             variables=vars,
     #         )
     #         verified_result.append(
@@ -258,9 +314,8 @@ class FeynmanTestSubject(TestSubject):
     ) -> list[TestResults]:
         writer.rule(
             "build_feynopt",
-            "cd "
-            + ns.escape_path(str(self.subject_path))
-            + " && cabal build -O2 feynopt",
+            f"cd {ns.escape_path(str(self.subject_path))} && "
+            + "cabal build -O2 feynopt",
         )
         writer.build("feynopt", "build_feynopt")
 
@@ -268,19 +323,19 @@ class FeynmanTestSubject(TestSubject):
         TestSubject.emit_time_rule(
             writer,
             rule,
-            "cd "
-            + ns.escape_path(str(self.subject_path))
-            + " && cabal exec -v0 -O2 feynopt -- -O2 '$in' > '$opt_file' 2> '$log_file'",
+            f"cd {ns.escape_path(str(self.subject_path))} && "
+            + "cabal exec -v0 -O2 feynopt -- -O2 '$in' "
+            + "> '$opt_file' 2> '$log_file'",
             "$time_file",
         )
 
-        rule_qasm3 = ns.escape(self.name + "_qasm3")
+        rule_qasm3 = ns.escape(f"{self.name}_qasm3")
         TestSubject.emit_time_rule(
             writer,
             rule_qasm3,
-            "cd "
-            + ns.escape_path(str(str(self.subject_path)))
-            + " && cabal exec -v0 -O2 feynopt -- -O2 -qasm3 '$in' > '$opt_file' 2> '$log_file'",
+            f"cd {ns.escape_path(str(self.subject_path))} && "
+            + "cabal exec -v0 -O2 feynopt -- -O2 -qasm3 '$in' "
+            + "> '$opt_file' 2> '$log_file'",
             "$time_file",
         )
 
@@ -288,21 +343,21 @@ class FeynmanTestSubject(TestSubject):
         for res in config.resources:
             if res.qc_res:
                 rule_used = rule
-                input_path = res.qc_res
+                ref_path = Path(res.qc_res)
                 syntax = Syntax.QC
             elif res.qasm_res:
                 rule_used = rule
-                input_path = res.qasm_res
+                ref_path = Path(res.qasm_res)
                 syntax = Syntax.QASM
             elif res.qasm3_res:
                 rule_used = rule_qasm3
-                input_path = res.qasm3_res
+                ref_path = Path(res.qasm3_res)
                 syntax = Syntax.QASM3
             else:
                 assert not "neither circuit nor program assigned to this resource?"
-            opt_path = out_path / (res.name + "_opt" + os.path.splitext(input_path)[1])
-            log_path = out_path / (res.name + "_stderr.log")
-            time_path = out_path / (res.name + "_time.json")
+            opt_path = out_path / f"{res.name}_opt{ref_path.suffix}"
+            log_path = out_path / f"{res.name}_stderr.log"
+            time_path = out_path / f"{res.name}_time.json"
             vars = {
                 "opt_file": ns.escape_path(str(opt_path)),
                 "log_file": ns.escape_path(str(log_path)),
@@ -311,7 +366,7 @@ class FeynmanTestSubject(TestSubject):
             writer.build(
                 [str(opt_path), str(log_path), str(time_path)],
                 rule_used,
-                [str(input_path)],
+                [str(ref_path)],
                 ["feynopt"],
                 variables=vars,
             )
@@ -322,13 +377,10 @@ class FeynmanTestSubject(TestSubject):
                     resource_name=res.name,
                     run_id=0,
                     syntax=syntax,
-                    input_path=input_path,
+                    ref_path=ref_path,
                     opt_path=opt_path,
                     log_path=log_path,
                     time_path=time_path,
-                    analysis_path=None,
-                    verify_log_path=None,
-                    verify_time_path=None,
                 )
             )
         return targets
@@ -350,9 +402,8 @@ class MlvoqcTestSubject(TestSubject):
         build_rule = ns.escape("build_" + self.name)
         writer.rule(
             build_rule,
-            "cd "
-            + ns.escape_path(str(self.subject_path))
-            + " && dune build bench_voqc.exe",
+            f"cd {ns.escape_path(str(self.subject_path))} && "
+            + "dune build bench_voqc.exe",
         )
         writer.build(bench_bin, build_rule)
 
@@ -360,11 +411,9 @@ class MlvoqcTestSubject(TestSubject):
         TestSubject.emit_time_rule(
             writer,
             rule,
-            "cd "
-            + ns.escape_path(str(self.subject_path))
-            + " && "
-            + ns.escape_path(bench_bin)
-            + " -f '$in' -o '$opt_file' 2>&1 > '$log_file'",
+            f"cd {ns.escape_path(str(self.subject_path))} && "
+            + f"{ns.escape_path(bench_bin)} -f '$in' -o '$opt_file' "
+            + "2>&1 > '$log_file'",
             "$time_file",
         )
 
@@ -372,13 +421,13 @@ class MlvoqcTestSubject(TestSubject):
         for res in config.resources:
             if res.qasm_res:
                 rule_used = rule
-                input_path = res.qasm_res
+                ref_path = Path(res.qasm_res)
                 syntax = Syntax.QASM
             else:
                 continue
-            opt_path = out_path / (res.name + "_opt" + os.path.splitext(input_path)[1])
-            log_path = out_path / (res.name + "_stderr.log")
-            time_path = out_path / (res.name + "_time.json")
+            opt_path = out_path / f"{res.name}_opt{ref_path.suffix}"
+            log_path = out_path / f"{res.name}_stderr.log"
+            time_path = out_path / f"{res.name}_time.json"
             vars = {
                 "opt_file": ns.escape_path(str(opt_path)),
                 "log_file": ns.escape_path(str(log_path)),
@@ -387,7 +436,7 @@ class MlvoqcTestSubject(TestSubject):
             writer.build(
                 [str(opt_path), str(log_path), str(time_path)],
                 rule_used,
-                [str(input_path)],
+                [str(ref_path)],
                 [bench_bin],
                 variables=vars,
             )
@@ -398,13 +447,10 @@ class MlvoqcTestSubject(TestSubject):
                     resource_name=res.name,
                     run_id=0,
                     syntax=syntax,
-                    input_path=input_path,
+                    ref_path=ref_path,
                     opt_path=opt_path,
                     log_path=log_path,
                     time_path=time_path,
-                    analysis_path=None,
-                    verify_log_path=None,
-                    verify_time_path=None,
                 )
             )
         return targets
@@ -444,21 +490,18 @@ class QuesoTestSubject(TestSubject):
         )
 
     def emit(self, writer: ns.Writer, output_path: Path, bench: Benchmark) -> list[str]:
-        subject_root = Path(
-            os.path.normpath(
-                args.run_path / args.bench_build / args.bench_root / self.name
-            )
-        )
+        subject_root = (
+            args.run_path / args.bench_build / args.bench_root / self.name
+        ).resolve()
 
         rule = ns.escape(self.name)
         queso_jar = str(subject_root / "target/QUESO-1.0-jar-with-dependencies.jar")
 
-        build_rule = ns.escape("build_" + self.name)
+        build_rule = ns.escape(f"build_{self.name}")
         writer.rule(
             build_rule,
-            "cd "
-            + ns.escape_path(str(subject_root))
-            + " && mvn package -Dmaven.test.skip",
+            f"cd {ns.escape_path(str(subject_root))} && "
+            + "mvn package -Dmaven.test.skip",
         )
 
         writer.build(queso_jar, build_rule)
@@ -467,17 +510,15 @@ class QuesoTestSubject(TestSubject):
         nam_symb_txt = str(subject_root / "rules_q3_s6_nam_symb.txt")
         writer.rule(
             rule,
-            "cd "
-            + ns.escape_path(str(subject_root))
-            + " && cabal exec -v0 -O2 feynopt -- -O2 $in > $out",
+            f"cd {ns.escape_path(str(subject_root))} && "
+            + "cabal exec -v0 -O2 feynopt -- -O2 $in > $out",
         )
 
-        rule_qasm3 = ns.escape(self.name + "_qasm3")
+        rule_qasm3 = ns.escape(f"{self.name}_qasm3")
         writer.rule(
             rule_qasm3,
-            "cd "
-            + ns.escape_path(str(subject_root))
-            + " && cabal exec -v0 -O2 feynopt -- -O2 -qasm3 $in > $out",
+            f"cd {ns.escape_path(str(subject_root))} && "
+            + "cabal exec -v0 -O2 feynopt -- -O2 -qasm3 $in > $out",
         )
 
         targets = []
@@ -486,15 +527,15 @@ class QuesoTestSubject(TestSubject):
             qc = res.qc_res or res.qasm_res
             qp = res.qasm3_res
             if qc:
-                out = os.path.normpath(
-                    args.run_path / output_path / (r + "_opt" + os.path.splitext(qc)[1])
-                )
+                out = (
+                    args.run_path / output_path / f"{r}_opt{os.path.splitext(qc)[1]}"
+                ).resolve()
                 targets.append(out)
                 writer.build([str(out)], rule, [str(qc)], [self.name])
             elif qp:
-                out = os.path.normpath(
-                    args.run_path / output_path / (r + "_opt" + os.path.splitext(qp)[1])
-                )
+                out = (
+                    args.run_path / output_path / f"{r}_opt{os.path.splitext(qp)[1]}"
+                ).resolve()
                 targets.append(out)
                 writer.build([str(out)], rule_qasm3, [str(qp)], [self.name])
         return targets
@@ -515,37 +556,32 @@ class QuizxTestSubject(TestSubject):
         )
 
     def emit(self, writer: ns.Writer, output_path: Path, bench: Benchmark) -> list[str]:
-        subject_root = Path(
-            os.path.normpath(
-                args.run_path / args.bench_build / args.bench_root / self.name
-            )
-        )
+        subject_root = (
+            args.run_path / args.bench_build / args.bench_root / self.name
+        ).resolve()
 
         rule = ns.escape(self.name)
 
         build_rule = ns.escape("build_" + self.name)
         writer.rule(
             build_rule,
-            "cd "
-            + ns.escape_path(str(subject_root))
-            + " && cabal build -v0 -O2 feynopt",
+            f"cd {ns.escape_path(str(subject_root))} && "
+            + "cabal build -v0 -O2 feynopt",
         )
 
         writer.build(self.name, build_rule)
 
         writer.rule(
             rule,
-            "cd "
-            + ns.escape_path(str(subject_root))
-            + " && cabal exec -v0 -O2 feynopt -- -O2 $in > $out",
+            f"cd {ns.escape_path(str(subject_root))} && "
+            + "cabal exec -v0 -O2 feynopt -- -O2 $in > $out",
         )
 
         rule_qasm3 = ns.escape(self.name + "_qasm3")
         writer.rule(
             rule_qasm3,
-            "cd "
-            + ns.escape_path(str(subject_root))
-            + " && cabal exec -v0 -O2 feynopt -- -O2 -qasm3 $in > $out",
+            f"cd {ns.escape_path(str(subject_root))} && "
+            + "cabal exec -v0 -O2 feynopt -- -O2 -qasm3 $in > $out",
         )
 
         targets = []
@@ -554,15 +590,15 @@ class QuizxTestSubject(TestSubject):
             qc = res.qc_res or res.qasm_res
             qp = res.qasm3_res
             if qc:
-                out = os.path.normpath(
+                out = (
                     args.run_path / output_path / (r + "_opt" + os.path.splitext(qc)[1])
-                )
+                ).resolve()
                 targets.append(out)
                 writer.build([str(out)], rule, [str(qc)], [self.name])
             elif qp:
-                out = os.path.normpath(
+                out = (
                     args.run_path / output_path / (r + "_opt" + os.path.splitext(qp)[1])
-                )
+                ).resolve()
                 targets.append(out)
                 writer.build([str(out)], rule_qasm3, [str(qp)], [self.name])
         return targets
@@ -592,16 +628,13 @@ def make_subject(name: str) -> TestSubject:
 
     if not name in subjects:
         # The sanity check right now just tests if there's a folder for the subject
-        norm_subject_dir = os.path.normpath(
+        norm_subject_dir = (
             args.run_path / args.bench_build / args.bench_root / name
-        )
-        if not os.path.isdir(norm_subject_dir):
+        ).resolve()
+        if not norm_subject_dir.is_dir():
             raise Exception(
-                "Didn't find subject dir at '%s' (normalized from '%s')"
-                % (
-                    norm_subject_dir,
-                    args.bench_build / args.bench_root / name,
-                )
+                f"Didn't find subject dir at '{norm_subject_dir}' (normalized "
+                + f"from '{args.bench_build / args.bench_root / name}')"
             )
         subjects[name] = subject_ctors_by_name[name]()
     return subjects[name]
@@ -613,28 +646,23 @@ resources: dict[str, Resource] = {}
 def make_resource(name: str) -> Resource:
     global resources
     if not name in resources:
-        norm_res_path = Path(
-            os.path.normpath(
-                args.run_path / args.bench_build / args.bench_root / args.res_dir
-            )
-        )
-        qc_path = norm_res_path / "qc" / (name + ".qc")
-        qasm_path = norm_res_path / "qasm" / (name + ".qasm")
-        qasm3_path = norm_res_path / "qasm3" / (name + ".qasm")
+        norm_res_path = (
+            args.run_path / args.bench_build / args.bench_root / args.res_dir
+        ).resolve()
+        qc_path = norm_res_path / "qc" / f"{name}.qc"
+        qasm_path = norm_res_path / "qasm" / f"{name}.qasm"
+        qasm3_path = norm_res_path / "qasm3" / f"{name}.qasm"
         r = Resource(
             name,
-            str(qc_path) if os.path.isfile(qc_path) else None,
-            str(qasm_path) if os.path.isfile(qasm_path) else None,
-            str(qasm3_path) if os.path.isfile(qasm3_path) else None,
+            str(qc_path) if qc_path.is_file() else None,
+            str(qasm_path) if qasm_path.is_file() else None,
+            str(qasm3_path) if qasm3_path.is_file() else None,
         )
         # Sanity check
         if r.qc_res == None and r.qasm3_res == None and r.qasm3_res == None:
             raise Exception(
-                "Didn't find any files for resource '%s' in '%s'"
-                % (
-                    name,
-                    args.bench_build / args.bench_root / args.res_dir,
-                )
+                f"Didn't find any files for resource '{name}' in "
+                + f"'{args.bench_build / args.bench_root / args.res_dir}'"
             )
         resources[name] = r
     return resources[name]
@@ -731,10 +759,10 @@ benchmark_ctors_by_name: dict[str, Callable] = {
 
 
 def detect_run_path(args: Args):
-    if not os.path.isdir(args.run_path / args.bench_build):
+    if not (args.run_path / args.bench_build).is_dir():
         logger.info("Didn't find bench_build '%s'", args.run_path / args.bench_build)
-        alt_run_path = Path(os.path.abspath(os.path.dirname(sys.argv[0])))
-        if os.path.isdir(alt_run_path / args.bench_build):
+        alt_run_path = Path(sys.argv[0]).parent.resolve()
+        if (alt_run_path / args.bench_build).is_dir():
             logger.warning(
                 "Don't seem to be running from bench project "
                 + "root, using argv[0] root '%s' instead of CWD",
@@ -745,34 +773,71 @@ def detect_run_path(args: Args):
 
 def validate_paths(args: Args):
     logger.info("Checking for bench_bench '%s'", args.run_path / args.bench_bench)
-    if not os.path.isdir(args.run_path / args.bench_bench):
-        raise Exception("Didn't find bench dir at '%s'" % (args.bench_bench,))
-    norm_bench_root = Path(
-        os.path.normpath(args.run_path / args.bench_build / args.bench_root)
-    )
-    if not os.path.isdir(norm_bench_root):
-        raise Exception(
-            "Didn't find bench project root dir at '%s'" % (args.bench_root,)
-        )
+    if not (args.run_path / args.bench_bench).is_dir():
+        raise Exception(f"Didn't find bench dir at '{args.bench_bench}'")
+    norm_bench_root = (args.run_path / args.bench_build / args.bench_root).resolve()
+    if not norm_bench_root.is_dir():
+        raise Exception(f"Didn't find bench project root dir at '{args.bench_root}'")
     logger.info("Real bench_root is '%s'", norm_bench_root)
 
 
 def run_benchmark(b: Benchmark):
     global args
-    build_path = Path(
-        os.path.normpath(args.run_path / args.bench_build / b.name / args.bench_ts)
-    )
+    build_path = (args.run_path / args.bench_build / b.name / args.bench_ts).resolve()
     logger.info("Run ID '%s', building into folder '%s'", args.bench_ts, build_path)
-    if os.path.isdir(build_path):
-        raise Exception("Build folder '%s' already exists" % (build_path,))
+    if build_path.is_dir():
+        raise Exception(f"Build folder '{build_path}' already exists")
     try:
+        # Make Ninja build file
         os.makedirs(build_path)
         w = ns.Writer(open(build_path / "build.ninja", "wt"))
+
+        # Add optimization build targets (this is the actual test runs)
         targets: list[TestResults] = []
         for s in b.subjects:
             os.makedirs(build_path / s.name)
             targets.extend(s.emit(w, build_path / s.name, b.config))
-        w.build("all", "phony", [str(t.opt_path) for t in targets])
+
+        # Figure out which resources (refs) are used by the targets, and
+        # add analysis targets for them -- we do this as a separate step
+        # because we don't want to duplicate the ref analysis, typically one
+        # ref analysis will be compared against multiple different
+        # optimizations
+        ref_build_path = build_path / "ref"
+        os.makedirs(ref_build_path)
+        a: FeynmanTestSubject = make_subject("feynman")
+        a.emit_analysis_dependencies(w)
+        refs_analysis: list[AnalysisResults] = [
+            a.emit_analysis(w, resource_name, ref_build_path, syntax, ref_path)
+            for ref_path, resource_name, syntax in sorted(
+                set(((t.ref_path, t.resource_name, t.syntax) for t in targets))
+            )
+        ]
+
+        # Make analysis targets for test results and annotate the test
+        # results with them
+        targets = [
+            replace(
+                t,
+                opt_analysis=a.emit_analysis(
+                    w, t.resource_name, t.opt_path.parent, t.syntax, t.opt_path
+                ),
+            )
+            for t in targets
+        ]
+
+        w.build(
+            "all",
+            "phony",
+            [str(t.opt_path) for t in targets]
+            + [
+                str(t.opt_analysis.results_path)
+                for t in targets
+                if t.opt_analysis != None
+            ]
+            + [str(t.verif.results_path) for t in targets if t.verif != None]
+            + [str(a.results_path) for a in refs_analysis],
+        )
         del w
     except:
         # We didn't get far enough along to bother saving the folder
@@ -815,7 +880,7 @@ if __name__ == "__main__":
             )
         for benchmark in args.benchmarks:
             if not benchmark in benchmark_ctors_by_name:
-                arg_parser.error("unknown suite '" + benchmark + "'")
+                arg_parser.error(f"unknown suite '{benchmark}'")
 
         res = main(args)
 
