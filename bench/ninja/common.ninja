@@ -130,3 +130,16 @@ rule bench_quartz
                 2>&1 > '\''${log_file}'\'' $
             '
 
+# vv-qco
+
+rule vv_qco_build
+    command = cd ${subject_root_vv_qco} && cargo build -r
+
+rule bench_vv_qco
+    command = /bin/time ${time_flags} -o '${time_file}' -- $
+        /bin/sh -c '$
+            cd ${subject_root_vv_qco} && $
+            cargo run -r fasttodd '\''${in}'\'' 2>&1 > '\''${log_file}'\'' && $
+            mv circuits/output/ '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
+            '
+

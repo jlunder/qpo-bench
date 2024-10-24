@@ -22,7 +22,8 @@ from pathlib import Path
 import shutil
 from subprocess import Popen
 import sys
-from typing import Callable
+from typing import Callable, Iterable
+import csv
 
 from ninja import ninja_syntax as ns
 
@@ -559,6 +560,50 @@ def validate_paths(args: Args):
     logger.info("Real bench_root is '%s'", norm_bench_root)
 
 
+@dataclass(frozen=True)
+class DataRow:
+    benchmark: str
+    subject: str
+    resource: str
+    syntax: str
+    ref_t_gates: int
+    t_gates: int
+    user_time: float
+    sys_time: float
+    elapsed_time: float
+    max_resident: int
+    status: int
+
+
+import json
+
+
+def read_analysis_results(
+    analysis: Iterable[AnalysisResults],
+) -> Iterable[tuple[int, float, float, float, int, int]]:
+    t_gates = None
+    user_time = None
+    sys_time = None
+    elapsed_time = None
+    max_resident = None
+    status = None
+    try:
+        res = json.load(open(analysis.results_path, "r"))
+        t_gates = int(res["gates"]["T"])
+    except:
+        pass
+    try:
+        res = json.load(open(analysis.time_path, "r"))
+        user_time = float(res["user"])
+        sys_time = float(res["system"])
+        elapsed_time = float(res["elapsed"])
+        max_resident = int(res["maxresident"])
+        status = int(res["status"])
+    except:
+        pass
+    return (t_gates, user_time, sys_time, elapsed_time, max_resident, status)
+
+
 def run_benchmark(b: Benchmark):
     global args
     build_path = (args.run_path / args.bench_build / b.name / args.bench_ts).resolve()
@@ -582,7 +627,7 @@ def run_benchmark(b: Benchmark):
         w.include((args.run_path / args.bench_bench / "ninja/common.ninja").resolve())
 
         # Add optimization build targets (this is the actual test runs)
-        targets: list[TestResults] = []
+        tests: list[TestResults] = []
         for s in b.subjects:
             out_path = build_path / s.name
             os.makedirs(build_path / s.name)
@@ -603,55 +648,56 @@ def run_benchmark(b: Benchmark):
                         log_path=out_path / f"{r.name}_opt.log",
                         time_path=out_path / f"{r.name}_opt_time.json",
                     )
-                    targets.append(s.emit_test(w, t))
+                    tests.append(s.emit_test(w, t))
                 else:
                     for i in range(b.config.repeat_count):
                         t = replace(
                             t,
+                            run_id=i,
                             opt_path=out_path
                             / f"{r.name}_opt_{t.run_id}{t.ref_path.suffix}",
                             log_path=out_path / f"{r.name}_opt_{t.run_id}.log",
                             time_path=out_path / f"{r.name}_opt_{t.run_id}_time.json",
                         )
-                        targets.append(s.emit_test(w, replace(t, run_id=i)))
+                        tests.append(s.emit_test(w, t))
 
-        # Figure out which resources (refs) are used by the targets, and
+        # Figure out which resources (refs) are used by the tests, and
         # add analysis targets for them -- we do this as a separate step
         # because we don't want to duplicate the ref analysis, typically one
         # ref analysis will be compared against multiple different
         # optimizations
         ref_build_path = build_path / "ref"
         os.makedirs(ref_build_path)
-        a: FeynmanTestSubject = make_subject("feynman")
+        a_sub: FeynmanTestSubject = make_subject("feynman")
         refs_analysis: list[AnalysisResults] = [
-            a.emit_analysis(w, resource_name, ref_build_path, syntax, ref_path)
+            a_sub.emit_analysis(w, resource_name, ref_build_path, syntax, ref_path)
             for ref_path, resource_name, syntax in sorted(
-                set(((t.ref_path, t.resource_name, t.syntax) for t in targets))
+                set(((t.ref_path, t.resource_name, t.syntax) for t in tests))
             )
         ]
 
         # Make analysis targets for test results and annotate the test
         # results with them
-        targets = [
+        tests = [
             replace(
                 t,
-                opt_analysis=a.emit_analysis(
+                opt_analysis=a_sub.emit_analysis(
                     w, t.resource_name, t.opt_path.parent, t.syntax, t.opt_path
                 ),
             )
-            for t in targets
+            for t in tests
         ]
 
         w.build(
             "all",
             "phony",
-            [str(t.opt_path) for t in targets]
+            [str(t.opt_path) for t in tests]
             + [
                 str(t.opt_analysis.results_path)
-                for t in targets
+                for t in tests
                 if t.opt_analysis != None
             ]
-            + [str(t.verif.results_path) for t in targets if t.verif != None]
+            + [str(t.verif.results_path) for t in tests if t.verif != None]
             + [str(a.results_path) for a in refs_analysis],
         )
         del w
@@ -659,8 +705,90 @@ def run_benchmark(b: Benchmark):
         # We didn't get far enough along to bother saving the folder
         shutil.rmtree(build_path, ignore_errors=True)
         raise
+
+    # This is the main event! Now that the build is prepared, run Ninja
     p = Popen(["ninja", "all"], cwd=build_path)
     p.communicate()
+
+    # The rest of this function is just parsing and collating all the loose
+    # JSON, and formatting that as a (somewhat denormalized) CSV.
+    rows: list[DataRow] = []
+    ref_rows: dict[tuple[str, str], tuple[DataRow, AnalysisResults]] = {}
+
+    for a in refs_analysis:
+        t_gates, _, _, _, _, status = read_analysis_results(a)
+        r = DataRow(
+            b.name,
+            "ref",
+            a.resource_name,
+            a.syntax,
+            None,
+            t_gates,
+            None,
+            None,
+            None,
+            None,
+            status,
+        )
+        ref_rows[(a.resource_name, a.syntax)] = (r, a)
+        rows.append(r)
+    for t in tests:
+        ref_t_gates = None
+        ref = ref_rows.get((t.resource_name, t.syntax), None)
+        if ref != None:
+            ref_t_gates = ref[0].t_gates
+        t_gates, user_time, sys_time, elapsed_time, max_resident, status = (
+            read_analysis_results(t.opt_analysis)
+        )
+        rows.append(
+            DataRow(
+                t.benchmark_name,
+                t.subject_name,
+                t.resource_name,
+                t.syntax,
+                ref_t_gates,
+                t_gates,
+                user_time,
+                sys_time,
+                elapsed_time,
+                max_resident,
+                status,
+            )
+        )
+
+    cw = csv.writer(open(build_path / f"{b.name}_{args.bench_ts}.csv", "w"))
+    cw.writerow(
+        [
+            "benchmark",
+            "subject",
+            "resource",
+            "syntax",
+            "reference t gates",
+            "t gates",
+            "user time (s)",
+            "sys time (s)",
+            "elapsed time (s)",
+            "max resident (kiB)",
+            "exit status",
+        ]
+    )
+    for r in rows:
+        cw.writerow(
+            [
+                r.benchmark,
+                r.subject,
+                r.resource,
+                r.syntax,
+                r.ref_t_gates,
+                r.t_gates,
+                r.user_time,
+                r.sys_time,
+                r.elapsed_time,
+                r.max_resident,
+                r.status,
+            ]
+        )
+    del cw
 
 
 def main(args: Args):
