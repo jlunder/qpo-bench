@@ -5,11 +5,34 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "type": "java",
+            "name": "QUESO Optimizer",
+            "request": "launch",
+            "mainClass": "Optimizer",
+            "args": [
+                "-c",
+                "${workspaceFolder}/bench/resources/qc/mod_adder_1024.qc",
+                "-g",
+                "nam",
+                "-r",
+                "rules_q3_s6_nam.txt",
+                "-sr",
+                "rules_q3_s6_nam_symb.txt",
+                "-t",
+                "45"
+            ]
+        },
+        {
             "name": "(gdb) TOpt ../tof_3_opt",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/topt/bin/TOpt",
-            "args": ["circuit", "tof_3_opt.qc", "-o", "tof_3_opt.sqc"],
+            "args": [
+                "circuit",
+                "tof_3_opt.qc",
+                "-o",
+                "tof_3_opt.sqc"
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

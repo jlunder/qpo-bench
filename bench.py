@@ -95,8 +95,8 @@ class BenchmarkConfig:
     name: str  # Should just match the name in the Benchmark
     measurables: set[Measurable]
     resources: set[Resource]
-    time_limit: float | None
-    memory_limit: float | None
+    time_limit_s: float | None
+    memory_limit_k: float | None
     repeat_count: int
 
 
@@ -181,7 +181,9 @@ class TestSubject:
 
     # Write a ninja snippet to run the actual test and collect output; output
     # is a list of results where the formatted output will go
-    def emit_test(self, w: ns.Writer, c: BenchmarkConfig, t: TestResults) -> list[TestResults]:
+    def emit_test(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> list[TestResults]:
         pass
 
 
@@ -198,6 +200,7 @@ class FeynmanTestSubject(TestSubject):
     opt_params: str
 
     def __init__(self, opt_params: str):
+        super().__init__()
         self.opt_params = opt_params
 
     select_syntax = TestSubject.select_any_syntax
@@ -207,14 +210,14 @@ class FeynmanTestSubject(TestSubject):
             [str(t.opt_path), str(t.log_path), str(t.time_path)],
             "bench_feynopt_qasm3" if t.syntax == Syntax.QASM3 else "bench_feynopt",
             [str(t.ref_path)],
-            ["feynopt"],
+            ["feynopt_bench_deps"],
             variables={
                 "opt_params": self.opt_params,
                 "opt_file": ns.escape_path(str(t.opt_path)),
                 "log_file": ns.escape_path(str(t.log_path)),
                 "time_file": ns.escape_path(str(t.time_path)),
-                "ulimit_time": c.time_limit,
-                "ulimit_mem": c.memory_limit,
+                "ulimit_time": c.time_limit_s,
+                "ulimit_mem": c.memory_limit_k,
             },
         )
         return t
@@ -241,7 +244,7 @@ class FeynmanTestSubject(TestSubject):
                 [str(analysis_path), str(log_path), str(time_path)],
                 "feyncount_qasm3_analyze",
                 [str(ref_path)],
-                ["feyncount"],
+                ["feyncount_analyze_deps"],
                 variables=vars,
             )
         else:
@@ -249,7 +252,7 @@ class FeynmanTestSubject(TestSubject):
                 [str(analysis_path), str(log_path), str(time_path)],
                 "feyncount_analyze",
                 [str(ref_path)],
-                ["feyncount"],
+                ["feyncount_analyze_deps"],
                 variables=vars,
             )
         return AnalysisResults(
@@ -267,7 +270,7 @@ class FeynmanTestSubject(TestSubject):
                 [str(verify_log_path), str(verify_time_path)],
                 "feynver_verify",
                 [str(result.opt_path)],
-                ["feynver", str(result.ref_path)],
+                ["feynver_verify_deps"],
                 variables={
                     "ref_file": ns.escape_path(str(result.ref_path)),
                     "log_file": ns.escape_path(str(verify_log_path)),
@@ -292,18 +295,20 @@ class MlvoqcTestSubject(TestSubject):
 
     select_syntax = TestSubject.select_qasm_syntax
 
-    def emit_test(self, w: ns.Writer, c: BenchmarkConfig, t: TestResults) -> TestResults:
+    def emit_test(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> TestResults:
         w.build(
             [str(t.opt_path), str(t.log_path), str(t.time_path)],
             "bench_mlvoqc",
             [str(t.ref_path)],
-            [str(self.bench_bin_path)],
+            ["mlvoqc_bench_deps"],
             variables={
                 "opt_file": ns.escape_path(str(t.opt_path)),
                 "log_file": ns.escape_path(str(t.log_path)),
                 "time_file": ns.escape_path(str(t.time_path)),
-                "ulimit_time": c.time_limit,
-                "ulimit_mem": c.memory_limit,
+                "ulimit_time": c.time_limit_s,
+                "ulimit_mem": c.memory_limit_k,
             },
         )
         return t
@@ -322,18 +327,20 @@ class QuartzTestSubject(TestSubject):
 
     select_syntax = TestSubject.select_qasm_syntax
 
-    def emit_test(self, w: ns.Writer, c: BenchmarkConfig, t: TestResults) -> TestResults:
+    def emit_test(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> TestResults:
         w.build(
             [str(t.opt_path), str(t.log_path), str(t.time_path)],
             "bench_quartz",
             [str(t.ref_path)],
-            [str(self.bench_quartz_bin_path), str(self.bench_quartz_ecc_set_path)],
+            ["quartz_bench_deps"],
             variables={
                 "opt_file": ns.escape_path(str(t.opt_path)),
                 "log_file": ns.escape_path(str(t.log_path)),
                 "time_file": ns.escape_path(str(t.time_path)),
-                "ulimit_time": c.time_limit,
-                "ulimit_mem": c.memory_limit,
+                "ulimit_time": c.time_limit_s,
+                "ulimit_mem": c.memory_limit_k,
             },
         )
         return t
@@ -342,20 +349,32 @@ class QuartzTestSubject(TestSubject):
 class QuesoTestSubject(TestSubject):
     path: Path = Path("queso")
 
-    select_syntax = TestSubject.select_qc_syntax
+    queso_time_s: int
+    queso_mem_k: int
 
-    def emit_test(self, w: ns.Writer, c: BenchmarkConfig, t: TestResults) -> TestResults:
+    def __init__(self, queso_time_s: int = 45, queso_mem_k: int = 4 * 1024 * 1024):
+        super().__init__()
+        self.queso_time_s = queso_time_s
+        self.queso_mem_k = queso_mem_k
+
+    select_syntax = TestSubject.select_qasm_syntax
+
+    def emit_test(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> TestResults:
         w.build(
             [str(t.opt_path), str(t.log_path), str(t.time_path)],
-            "bench_voqc",
+            "bench_queso",
             [str(t.ref_path)],
-            [str(self.bench_bin_path)],
+            ["queso_bench_deps"],
             variables={
                 "opt_file": ns.escape_path(str(t.opt_path)),
                 "log_file": ns.escape_path(str(t.log_path)),
                 "time_file": ns.escape_path(str(t.time_path)),
-                "ulimit_time": c.time_limit,
-                "ulimit_mem": c.memory_limit,
+                "queso_time": self.queso_time_s,
+                "queso_mem": self.queso_mem_k,
+                "ulimit_time": c.time_limit_s,
+                "ulimit_mem": c.memory_limit_k,
             },
         )
         return t
@@ -366,7 +385,9 @@ class QuizxTestSubject(TestSubject):
 
     select_syntax = TestSubject.select_qc_syntax
 
-    def emit_test(self, w: ns.Writer, c: BenchmarkConfig, t: TestResults) -> TestResults:
+    def emit_test(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> TestResults:
         w.build(
             [str(t.opt_path), str(t.log_path), str(t.time_path)],
             "bench_voqc",
@@ -376,8 +397,8 @@ class QuizxTestSubject(TestSubject):
                 "opt_file": ns.escape_path(str(t.opt_path)),
                 "log_file": ns.escape_path(str(t.log_path)),
                 "time_file": ns.escape_path(str(t.time_path)),
-                "ulimit_time": c.time_limit,
-                "ulimit_mem": c.memory_limit,
+                "ulimit_time": c.time_limit_s,
+                "ulimit_mem": c.memory_limit_k,
             },
         )
         return t
@@ -386,13 +407,13 @@ class QuizxTestSubject(TestSubject):
 subjects: dict[str, TestSubject] = {}
 
 subject_ctors_by_name: dict[str, Callable] = {
-    "feynman": (lambda: FeynmanTestSubject("-O2")),
-    "feynman-apf": (lambda: FeynmanTestSubject("-apf")),
-    "feynman-ppf": (lambda: FeynmanTestSubject("-ppf")),
+    "feynman": lambda: FeynmanTestSubject("-O2"),
+    "feynman-apf": lambda: FeynmanTestSubject("-apf"),
+    "feynman-ppf": lambda: FeynmanTestSubject("-ppf"),
     "mlvoqc": MlvoqcTestSubject,
     # "pyzx": PyzxTestSubject,
     "quartz": QuartzTestSubject,
-    "queso": QuesoTestSubject,
+    "queso": lambda: QuesoTestSubject(45, 4 * 1024 * 1024),
     "quizx": QuizxTestSubject,
     # "topt": ToptTestSubject,
     # "vv-qco": VvQcoTestSubject,
@@ -455,8 +476,8 @@ def make_benchmark(
             name,
             measurables=set(measurables),
             resources=set(map(make_resource, resources)),
-            memory_limit=memory_limit,
-            time_limit=time_limit,
+            memory_limit_k=memory_limit,
+            time_limit_s=time_limit,
             repeat_count=repeat_count,
         ),
     )
@@ -465,10 +486,10 @@ def make_benchmark(
 benchmark_ctors_by_name: dict[str, Callable] = {
     "minimal": lambda: make_benchmark(
         "minimal",
-        ["feynman", "feynman-ppf", "mlvoqc", "quartz"],
+        ["feynman", "feynman-ppf", "mlvoqc", "quartz", "queso"],
         [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
         ["qft_4", "tof_4", "mod_adder_1024"] + ["if-simple", "loop-simple"],
-        memory_limit=8*1024*1024,
+        memory_limit=8 * 1024 * 1024,
         time_limit=60,
     ),
     "popl25": lambda: make_benchmark(

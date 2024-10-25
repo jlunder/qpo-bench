@@ -16,12 +16,16 @@ subject_root_quizx = ${bench_root}/quizx
 subject_root_topt = ${bench_root}/topt
 subject_root_vv_qco = ${bench_root}/vv-qco
 
+pool feynman_cabal
+    depth = 1
+
 # analysis and verification
 
 rule build_feyncount
     command = cd ${subject_root_feynman} && cabal build -O2 feyncount
+    pool = feynman_cabal
 
-build feyncount: build_feyncount
+build feyncount_analyze_deps: build_feyncount
 
 rule feyncount_analyze
     command = /bin/time ${time_flags} -o '${analysis_time_file}' -- $
@@ -32,6 +36,7 @@ rule feyncount_analyze
             cabal exec -v0 -O2 feyncount -- '\''${in}'\'' $
                 > '\''${analysis_file}'\'' 2> '\''${analysis_log_file}'\'' $
             ' || true
+    pool = feynman_cabal
 
 rule feyncount_qasm3_analyze
     command = /bin/time ${time_flags} -o '${analysis_time_file}' -- $
@@ -42,11 +47,13 @@ rule feyncount_qasm3_analyze
             cabal exec -v0 -O2 feyncount -- -qasm3 '\''${in}'\'' $
                 > '\''${analysis_file}'\'' 2> '\''${analysis_log_file}'\'' $
             ' || true
+    pool = feynman_cabal
 
 rule build_feynver
     command = cd ${subject_root_feynman} && cabal build -O2 feynver
+    pool = feynman_cabal
 
-build feynver: build_feynver
+build feynver_verify_deps: build_feynver
 
 rule feynver_verify
     command = /bin/time ${time_flags} -o '${verif_time_file}' -- $
@@ -57,6 +64,7 @@ rule feynver_verify
             cabal exec -v0 -O2 feynver -- '\''${ref_file}'\'' '\''${opt_file}'\'' $
                 > '\''${verif_result_file}'\'' 2> '\''${verif_log_file}'\'' $
             ' || true
+    pool = feynman_cabal
 
 rule feynver_qasm3_verify
     command = /bin/time ${time_flags} -o '${verif_time_file}' -- $
@@ -67,13 +75,15 @@ rule feynver_qasm3_verify
             cabal exec -v0 -O2 feynver -- -qasm3 '\''${ref_file}'\'' '\''${opt_file}'\'' $
                 > '\''${verif_result_file}'\'' 2> '\''${verif_log_file}'\'' $
             ' || true
+    pool = feynman_cabal
 
 # feynman
 
 rule build_feynopt
     command = cd ${subject_root_feynman} && cabal build -O2 feynopt
+    pool = feynman_cabal
 
-build feynopt: build_feynopt
+build feynopt_bench_deps: build_feynopt
 
 rule bench_feynopt
     command = /bin/time ${time_flags} -o '$time_file' -- $
@@ -84,6 +94,7 @@ rule bench_feynopt
             cabal exec -v0 -O2 feynopt -- ${opt_params} '\''${in}'\'' $
                 > '\''${opt_file}'\'' 2> '\''${log_file}'\'' $
             ' || true
+    pool = feynman_cabal
 
 rule bench_feynopt_qasm3
     command = /bin/time ${time_flags} -o '$time_file' -- $
@@ -94,15 +105,22 @@ rule bench_feynopt_qasm3
             cabal exec -v0 -O2 feynopt -- ${opt_params} -qasm3 '\''${in}'\'' $
                 > '\''${opt_file}'\'' 2> '\''${log_file}'\'' $
             ' || true
+    pool = feynman_cabal
 
 # mlvoqc
+
+pool mlvoqc_dune
+    depth = 1
 
 mlvoqc_bench_voqc = ${subject_root_mlvoqc}/_build/default/bench_voqc.exe
 
 rule mlvoqc_dune_build
     command = cd ${subject_root_mlvoqc} && dune build bench_voqc.exe
+    pool = mlvoqc_dune
 
 build ${mlvoqc_bench_voqc}: mlvoqc_dune_build
+
+build mlvoqc_bench_deps: phony || ${mlvoqc_bench_voqc}
 
 rule bench_mlvoqc
     command = /bin/time ${time_flags} -o '$time_file' -- $
@@ -114,9 +132,8 @@ rule bench_mlvoqc
                 2>&1 > '\''$log_file'\'' $
             ' || true
 
-
 # pyzx
-
+#TODO
 rule pyzx_build
     command = cd ${subject_root_vv_qco} && cargo build -r
 
@@ -130,34 +147,41 @@ rule bench_pyzx
             mv circuits/output/ '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
             ' || true
 
-
 # quartz
 
-quartz_build = ${subject_root_quartz}/build
-quartz_makefile = ${quartz_build}/Makefile
-quartz_gen_ecc_set = ${quartz_build}/gen_ecc_set
-quartz_bench_quartz = ${quartz_build}/bench_quartz
+quartz_build_dir = ${subject_root_quartz}/build
+quartz_makefile = ${quartz_build_dir}/Makefile
+quartz_gen_ecc_set = ${quartz_build_dir}/gen_ecc_set
+quartz_bench_quartz = ${quartz_build_dir}/bench_quartz
 quartz_ecc_set = ${subject_root_quartz}/eccset/Clifford_T_5_3_complete_ECC_set.json
+
+pool quartz_cmake
+    depth = 1
 
 rule quartz_mkdir
     command = mkdir -p ${out}
 
 rule quartz_cmake
-    command = cd ${quartz_build} && cmake ..
+    command = cd ${quartz_build_dir} && cmake ..
+    pool = quartz_cmake
 
 rule quartz_make
-    command = cd ${quartz_build} && make -j6 ${make_target}
+    command = cd ${quartz_build_dir} && make -j6 ${make_target}
+    pool = quartz_cmake
 
 rule quartz_gen_ecc_set
-    command = cd ${quartz_build} && ./gen_ecc_set
+    command = cd ${quartz_build_dir} && ./gen_ecc_set
 
-build ${quartz_build}: quartz_mkdir
-build ${quartz_makefile}: quartz_cmake | ${quartz_build}
-build ${quartz_gen_ecc_set}: quartz_make | ${quartz_makefile}
+build ${quartz_build_dir}: quartz_mkdir
+build ${quartz_makefile}: quartz_cmake || ${quartz_build_dir}
+build ${quartz_gen_ecc_set}: quartz_make ${quartz_makefile}
     make_target = gen_ecc_set
-build ${quartz_bench_quartz}: quartz_make | ${quartz_makefile}
+build ${quartz_bench_quartz}: quartz_make ${quartz_makefile}
     make_target = bench_quartz
-build ${quartz_ecc_set}: quartz_gen_ecc_set | ${quartz_gen_ecc_set}
+build ${quartz_ecc_set}: quartz_gen_ecc_set ${quartz_gen_ecc_set}
+
+build quartz_bench_deps: phony || $
+    ${quartz_ecc_set} ${quartz_bench_quartz}
 
 rule bench_quartz
     command = /bin/time ${time_flags} -o '${time_file}' -- $
@@ -173,26 +197,54 @@ rule bench_quartz
 
 # queso
 
-rule queso_build
-    command = cd ${subject_root_vv_qco} && cargo build -r
+queso_target_jar = target/QUESO-1.0-jar-with-dependencies.jar
+
+pool queso_maven
+    depth = 1
+
+rule queso_maven_build
+    command = cd ${subject_root_queso} && mvn package -Dmaven.test.skip
+    pool = queso_maven
+
+rule queso_gen_rules
+    command = cd ${subject_root_queso} && $
+        java --enable-preview -cp ${queso_target_jar} $
+            Synthesizer -g nam -q 3 -s 6
+
+build ${subject_root_queso}/${queso_target_jar}: queso_maven_build
+
+build ${subject_root_queso}/rules_q3_s6_nam_symb.txt $
+    ${subject_root_queso}/rules_q3_s6_nam.txt: queso_gen_rules $
+    ${subject_root_queso}/${queso_target_jar}
+
+build queso_bench_deps: phony || $
+    ${subject_root_queso}/${queso_target_jar} $
+    ${subject_root_queso}/rules_q3_s6_nam_symb.txt $
+    ${subject_root_queso}/rules_q3_s6_nam.txt
 
 rule bench_queso
     command = /bin/time ${time_flags} -o '${time_file}' -- $
         /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
             ulimit -t ${ulimit_time}; $
-            cd ${subject_root_vv_qco} && $
-            cargo run -r fasttodd '\''${in}'\'' 2>&1 > '\''${log_file}'\'' && $
-            mv circuits/output/ '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
+            cd ${subject_root_queso} && $
+            java --enable-preview -Xmx${queso_mem}k -cp ${queso_target_jar} Optimizer $
+                -c '\''${in}'\'' -g nam -r rules_q3_s6_nam.txt -sr rules_q3_s6_nam_symb.txt $
+                -t '\''${queso_time}'\'' -o '\''${opt_file}.dir'\'' -j "nam" $
+                2>&1 > '\''${log_file}'\'' && $
+            cat '\''${opt_file}.dir'\''/* > '\''${opt_file}'\'' 2>> '\''${log_file}'\'' $
             ' || true
-#java --enable-preview -cp queso/SymbolicOptimizer-1.0-SNAPSHOT-jar-with-dependencies.jar \
-#  Applier -c circuits/qasm/$X.qasm -g nam -r queso/rules_q3_s6_nam.txt -sr queso/rules_q3_s6_nam_symb.txt -t $QUESO_TIMEOUT_SEC -o queso_out -j "nam" > queso_out/$X
+
 
 
 # quizx
+#TODO
+pool quizx_cargo
+    depth = 1
 
 rule quizx_build
     command = cd ${subject_root_vv_qco} && cargo build -r
+    pool = quizx_cargo
 
 rule bench_quizx
     command = /bin/time ${time_flags} -o '${time_file}' -- $
@@ -200,16 +252,22 @@ rule bench_quizx
             ulimit -v ${ulimit_mem}; $
             ulimit -t ${ulimit_time}; $
             cd ${subject_root_vv_qco} && $
+            rm -f circuits/output/*.qc && $
             cargo run -r fasttodd '\''${in}'\'' 2>&1 > '\''${log_file}'\'' && $
-            mv circuits/output/ '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
+            mv circuits/output/*.qc '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
             ' || true
+    pool = quizx_cargo
 #./run_quizx circuits/qasm/$X.qasm > quizx_out/$X.qasm
 
 
 # vv-qco
 
+pool vv_qco_cargo
+    depth = 1
+
 rule vv_qco_build
     command = cd ${subject_root_vv_qco} && cargo build -r
+    pool = vv_qco_cargo
 
 rule bench_vv_qco
     command = /bin/time ${time_flags} -o '${time_file}' -- $
@@ -217,8 +275,10 @@ rule bench_vv_qco
             ulimit -v ${ulimit_mem}; $
             ulimit -t ${ulimit_time}; $
             cd ${subject_root_vv_qco} && $
+            rm -f circuits/output/*.qc && $
             cargo run -r fasttodd '\''${in}'\'' 2>&1 > '\''${log_file}'\'' && $
-            mv circuits/output/ '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
+            mv circuits/output/*.qc '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
             ' || true
+    pool = vv_qco_cargo
 
 
