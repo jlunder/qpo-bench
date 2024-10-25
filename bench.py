@@ -15,6 +15,7 @@ start_time = datetime.now()
 import argparse
 from dataclasses import dataclass, replace
 from enum import Enum, StrEnum, auto
+from itertools import product
 import logging
 import os
 from pathlib import Path
@@ -154,10 +155,12 @@ class TestSubject:
     def select_any_syntax(
         self, c: BenchmarkConfig, r: Resource, t: TestResults
     ) -> TestResults:
-        if r.qc_res:
-            return replace(t, syntax=Syntax.QC, ref_path=Path(r.qc_res))
+        if False:
+            pass
         elif r.qasm_res:
             return replace(t, syntax=Syntax.QASM, ref_path=Path(r.qasm_res))
+        elif r.qc_res:
+            return replace(t, syntax=Syntax.QC, ref_path=Path(r.qc_res))
         elif r.qasm3_res:
             return replace(t, syntax=Syntax.QASM3, ref_path=Path(r.qasm3_res))
         else:
@@ -570,19 +573,22 @@ def make_benchmark(
     )
 
 
-popl25_subjects = (
-    [
-        "feynman",
-        "feynman-apf",
-        "feynman-ppf",
-        "feynman-pyzx",
-        "mlvoqc",
-        "pyzx",
-        "pyzx-todd",
-        "quartz",
-        "queso",
-    ],
-)
+popl25_subjects = [
+    "feynman",
+    "feynman-apf",
+    "feynman-ppf",
+    "feynman-pyzx",
+    "mlvoqc",
+    "pyzx",
+    "pyzx-todd",
+    "quartz",
+    "queso",
+    "vv-qco-bbmerge",
+    "vv-qco-fasttmerge",
+    "vv-qco-internalhopt",
+    "vv-qco-tohpe",
+    "vv-qco-fasttodd",
+]
 
 popl25_resources = (
     [
@@ -661,54 +667,6 @@ benchmark_ctors_by_name: dict[str, Callable] = {
         memory_limit=8 * 1024 * 1024,
         time_limit=10,
     ),
-    "popl25-feynman": lambda: make_benchmark(
-        "popl25-feynman",
-        ["feynman"],
-        [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
-        popl25_resources,
-        memory_limit=8 * 1024 * 1024,
-        time_limit=30,
-    ),
-    "popl25quick-feynman-apf": lambda: make_benchmark(
-        "popl25quick-feynman-apf",
-        ["feynman-apf"],
-        [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
-        popl25quick_resources,
-        memory_limit=8 * 1024 * 1024,
-        time_limit=30,
-    ),
-    "popl25slow-feynman-apf": lambda: make_benchmark(
-        "popl25slow-feynman-apf",
-        ["feynman-apf"],
-        [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
-        popl25slow_resources,
-        memory_limit=8 * 1024 * 1024,
-        time_limit=300,
-    ),
-    "popl25quick-feynman-ppf": lambda: make_benchmark(
-        "popl25quick-feynman-ppf",
-        ["feynman-ppf"],
-        [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
-        popl25quick_resources,
-        memory_limit=8 * 1024 * 1024,
-        time_limit=30,
-    ),
-    "popl25slow-feynman-ppf": lambda: make_benchmark(
-        "popl25slow-feynman-ppf",
-        ["feynman-ppf"],
-        [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
-        popl25slow_resources,
-        memory_limit=8 * 1024 * 1024,
-        time_limit=1800,
-    ),
-    "popl25-queso": lambda: make_benchmark(
-        "popl25-queso",
-        ["queso"],
-        [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
-        popl25_resources,
-        memory_limit=8 * 1024 * 1024,
-        time_limit=1800,
-    ),
     "test-feynman-pyzx": lambda: make_benchmark(
         "test-feynman-pyzx",
         ["feynman-pyzx"],
@@ -733,6 +691,18 @@ benchmark_ctors_by_name: dict[str, Callable] = {
         memory_limit=8 * 1024 * 1024,
         time_limit=60,
     ),
+}
+
+benchmark_ctors_by_name |= {
+    f"popl25{speed}-{subject}": lambda speed=speed, subject=subject: make_benchmark(
+        f"popl25{speed}-{subject}",
+        [subject],
+        [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
+        popl25quick_resources if speed == "quick" else popl25slow_resources,
+        memory_limit=8 * 1024 * 1024,
+        time_limit=60 if speed == "quick" else 600,
+    )
+    for speed, subject in product(["slow", "quick"], popl25_subjects)
 }
 
 

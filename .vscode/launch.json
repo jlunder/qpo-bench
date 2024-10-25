@@ -35,6 +35,17 @@
                 "popl25-feynman"
             ]
         },
+
+        {
+            "name": "bench.py popl25quick-feynman",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-feynman"
+            ]
+        },
         {
             "name": "bench.py popl25quick-feynman-apf",
             "type": "debugpy",
@@ -46,16 +57,6 @@
             ]
         },
         {
-            "name": "bench.py popl25slow-feynman-apf",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/bench.py",
-            "console": "integratedTerminal",
-            "args": [
-                "popl25slow-feynman-apf"
-            ]
-        },
-        {
             "name": "bench.py popl25quick-feynman-ppf",
             "type": "debugpy",
             "request": "launch",
@@ -63,6 +64,138 @@
             "console": "integratedTerminal",
             "args": [
                 "popl25quick-feynman-ppf"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-feynman-pyzx",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-feynman-pyzx"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-mlvoqc",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-mlvoqc"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-pyzx",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-pyzx"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-pyzx-todd",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-pyzx-todd"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-quartz",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-quartz"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-queso",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-queso"
+            ]
+        },
+
+        {
+            "name": "bench.py popl25quick-vv-qco-bbmerge",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-vv-qco-bbmerge"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-vv-qco-fasttmerge",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-vv-qco-fasttmerge"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-vv-qco-internalhopt",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-vv-qco-internalhopt"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-vv-qco-tohpe",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-vv-qco-tohpe"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-vv-qco-fasttodd",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-vv-qco-fasttodd"
+            ]
+        },
+
+        {
+            "name": "bench.py popl25slow-feynman",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25slow-feynman"
+            ]
+        },
+        {
+            "name": "bench.py popl25slow-feynman-apf",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25slow-feynman-apf"
             ]
         },
         {
