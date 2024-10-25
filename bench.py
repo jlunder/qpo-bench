@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 # See README.md for all sorts of useful info
 
@@ -13,9 +13,8 @@ start_time = datetime.now()
 
 
 import argparse
-from dataclasses import dataclass, replace, field
+from dataclasses import dataclass, replace
 from enum import Enum, StrEnum, auto
-import itertools
 import logging
 import os
 from pathlib import Path

@@ -77,6 +77,29 @@ rule feynver_qasm3_verify
             ' || true
     pool = feynman_cabal
 
+rule pyzx_analyze
+    command = /bin/time ${time_flags} -o '${analysis_time_file}' -- $
+        /bin/sh -c '$
+            ulimit -v ${ulimit_mem}; $
+            ulimit -t ${ulimit_time}; $
+            . ${bench_root}/.venv/bin/activate; $
+            cd ${subject_root_pyzx} && $
+            python pyzx_analyze.py '\''${in}'\'' > '\''${analysis_result_file}'\'' $
+                2> '\''${analysis_log_file}'\'' $
+            ' || true
+
+rule pyzx_verify
+    command = /bin/time ${time_flags} -o '${verif_time_file}' -- $
+        /bin/sh -c '$
+            ulimit -v ${ulimit_mem}; $
+            ulimit -t ${ulimit_time}; $
+            . ${bench_root}/.venv/bin/activate; $
+            cd ${subject_root_pyzx} && $
+            python pyzx_verify.py '\''${ref_file}'\'' '\''${opt_file}'\'' $
+                > '\''${verif_result_file}'\'' 2> '\''${verif_log_file}'\'' $
+            ' || true
+
+
 # feynman
 
 rule build_feynopt
@@ -107,6 +130,7 @@ rule bench_feynopt_qasm3
             ' || true
     pool = feynman_cabal
 
+
 # mlvoqc
 
 pool mlvoqc_dune
@@ -132,20 +156,31 @@ rule bench_mlvoqc
                 2>&1 > '\''$log_file'\'' $
             ' || true
 
+
 # pyzx
-#TODO
-rule pyzx_build
-    command = cd ${subject_root_vv_qco} && cargo build -r
 
 rule bench_pyzx
     command = /bin/time ${time_flags} -o '${time_file}' -- $
         /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
             ulimit -t ${ulimit_time}; $
-            cd ${subject_root_vv_qco} && $
-            cargo run -r fasttodd '\''${in}'\'' 2>&1 > '\''${log_file}'\'' && $
-            mv circuits/output/ '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
+            . ${bench_root}/.venv/bin/activate; $
+            cd ${subject_root_pyzx} && $
+            python bench_pyzx.py -v '\''${in}'\'' '\''${opt_file}'\'' $
+                2>&1 > '\''${log_file}'\''
             ' || true
+
+rule bench_pyzx_todd
+    command = /bin/time ${time_flags} -o '$time_file' -- $
+        /bin/sh -c '$
+            ulimit -v ${ulimit_mem}; $
+            ulimit -t ${ulimit_time}; $
+            . ${bench_root}/.venv/bin/activate; $
+            cd ${subject_root_pyzx} && $
+            python bench_pyzx_todd.py -v '\''${in}'\'' '\''${opt_file}'\'' $
+                2>&1 > '\''${log_file}'\''
+            ' || true
+
 
 # quartz
 
@@ -195,6 +230,7 @@ rule bench_quartz
                 2>&1 > '\''${log_file}'\'' $
             ' || true
 
+
 # queso
 
 queso_target_jar = target/QUESO-1.0-jar-with-dependencies.jar
@@ -234,7 +270,6 @@ rule bench_queso
                 2>&1 > '\''${log_file}'\'' && $
             cat '\''${opt_file}.dir'\''/* > '\''${opt_file}'\'' 2>> '\''${log_file}'\'' $
             ' || true
-
 
 
 # quizx
