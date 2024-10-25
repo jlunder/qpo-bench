@@ -4,6 +4,77 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
+        {
+            "name": "bench.py minimal",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "minimal"
+            ]
+        },
+        {
+            "name": "bench.py popl25",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25"
+            ]
+        },
+        {
+            "name": "bench.py popl25-feynman",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25-feynman"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-feynman-apf",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-feynman-apf"
+            ]
+        },
+        {
+            "name": "bench.py popl25slow-feynman-apf",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25slow-feynman-apf"
+            ]
+        },
+        {
+            "name": "bench.py popl25quick-feynman-ppf",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25quick-feynman-ppf"
+            ]
+        },
+        {
+            "name": "bench.py popl25slow-feynman-ppf",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/bench.py",
+            "console": "integratedTerminal",
+            "args": [
+                "popl25slow-feynman-ppf"
+            ]
+        },
         {
             "type": "java",
             "name": "QUESO Optimizer",
@@ -49,16 +120,6 @@
                     "text": "-gdb-set disassembly-flavor intel",
                     "ignoreFailures": true
                 }
-            ]
-        },
-        {
-            "name": "Python Debugger: Current File with Arguments",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "args": [
-                "minimal"
             ]
         }
     ]
