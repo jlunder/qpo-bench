@@ -167,7 +167,7 @@ rule bench_pyzx
             . ${bench_root}/.venv/bin/activate; $
             cd ${subject_root_pyzx} && $
             python bench_pyzx.py -v '\''${in}'\'' '\''${opt_file}'\'' $
-                2>&1 > '\''${log_file}'\''
+                2>&1 > '\''${log_file}'\'' $
             ' || true
 
 rule bench_pyzx_todd
@@ -178,9 +178,25 @@ rule bench_pyzx_todd
             . ${bench_root}/.venv/bin/activate; $
             cd ${subject_root_pyzx} && $
             python bench_pyzx_todd.py -v '\''${in}'\'' '\''${opt_file}'\'' $
-                2>&1 > '\''${log_file}'\''
+                2>&1 > '\''${log_file}'\'' $
             ' || true
 
+rule bench_feynopt_pyzx
+    command = /bin/time ${time_flags} -o '$time_file' -- $
+        /bin/sh -c '$
+            ulimit -v ${ulimit_mem}; $
+            ulimit -t ${ulimit_time}; $
+            . ${bench_root}/.venv/bin/activate; $
+            cd ${subject_root_feynman} && $
+            echo '\''Stage 1: feynopt -ppf'\'' > '\''${log_file}'\'' && $
+            cabal exec -v0 -O2 feynopt -- -ppf '\''${in}'\'' $
+                > '\''${opt_file}_p0.qc'\'' 2>> '\''${log_file}'\'' && $
+            cd ${subject_root_pyzx} && $
+            echo '\''Stage 2: pyzx TODD'\'' >> '\''${log_file}'\'' && $
+            python bench_pyzx_todd.py -v '\''${opt_file}_p0.qc'\'' $
+                '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
+            ' || true
+    pool = feynman_cabal
 
 # quartz
 
@@ -304,16 +320,40 @@ rule vv_qco_build
     command = cd ${subject_root_vv_qco} && cargo build -r
     pool = vv_qco_cargo
 
+# rule bench_vv_qco
+#     command = /bin/time ${time_flags} -o '${time_file}' -- $
+#         /bin/sh -c '$
+#             ulimit -v ${ulimit_mem}; $
+#             ulimit -t ${ulimit_time}; $
+#             . ${bench_root}/.venv/bin/activate; $
+#             cd ${subject_root_pyzx} && $
+#             echo '\''Stage 1: pyzx'\'' >> '\''${log_file}'\'' && $
+#             python bench_pyzx.py -v '\''${in}'\'' $
+#                 '\''${opt_file}_p0.qc'\'' 2>&1 >> '\''${log_file}'\'' && $
+#             cd ${subject_root_vv_qco} && $
+#             echo '\''Stage 2: vv-qco'\'' >> '\''${log_file}'\'' && $
+#             rm -f circuits/output/*.qc && $
+#             cargo run -r ${opt_alg} '\''${opt_file}_p0.qc'\'' 2>&1 > '\''${log_file}'\'' && $
+#             mv circuits/output/*.qc '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
+#             ' || true
+#     pool = vv_qco_cargo
+
+
 rule bench_vv_qco
     command = /bin/time ${time_flags} -o '${time_file}' -- $
         /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
             ulimit -t ${ulimit_time}; $
+            cd ${subject_root_feynman} && $
+            echo '\''Stage 1: feynopt -ppf'\'' > '\''${log_file}'\'' && $
+            cabal exec -v0 -O2 feynopt -- -O2 '\''${in}'\'' $
+                > '\''${opt_file}_p0.qc'\'' 2>> '\''${log_file}'\'' && $
             cd ${subject_root_vv_qco} && $
+            echo '\''Stage 2: vv-qco'\'' >> '\''${log_file}'\'' && $
             rm -f circuits/output/*.qc && $
-            cargo run -r fasttodd '\''${in}'\'' 2>&1 > '\''${log_file}'\'' && $
+            cargo run -r ${opt_alg} '\''${opt_file}_p0.qc'\'' 2>&1 > '\''${log_file}'\'' && $
             mv circuits/output/*.qc '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
             ' || true
-    pool = vv_qco_cargo
+    pool = feynman_cabal
 
 

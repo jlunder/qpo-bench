@@ -164,6 +164,16 @@ class TestSubject:
             assert not "neither circuit nor program assigned to this resource?"
         return None
 
+    def select_circuit_syntax(
+        self, c: BenchmarkConfig, r: Resource, t: TestResults
+    ) -> TestResults:
+        if r.qc_res:
+            return replace(t, syntax=Syntax.QC, ref_path=Path(r.qc_res))
+        elif r.qasm_res:
+            return replace(t, syntax=Syntax.QASM, ref_path=Path(r.qasm_res))
+        else:
+            return None
+
     def select_qc_syntax(
         self, c: BenchmarkConfig, r: Resource, t: TestResults
     ) -> TestResults:
@@ -178,12 +188,26 @@ class TestSubject:
             return replace(t, syntax=Syntax.QASM, ref_path=Path(r.qasm_res))
         return None
 
+    def validate(self):
+        if not self.subject_path.is_dir():
+            raise Exception(f"Didn't find subject dir at '{self.subject_path}')")
+
     # Write a ninja snippet to run the actual test and collect output; output
     # is a list of results where the formatted output will go
     def emit_test(
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
     ) -> list[TestResults]:
         pass
+
+    @staticmethod
+    def test_vars(c: BenchmarkConfig, t: TestResults) -> dict[str, any]:
+        return {
+            "opt_file": ns.escape_path(str(t.opt_path)),
+            "log_file": ns.escape_path(str(t.log_path)),
+            "time_file": ns.escape_path(str(t.time_path)),
+            "ulimit_time": c.time_limit_s,
+            "ulimit_mem": c.memory_limit_k,
+        }
 
 
 @dataclass(frozen=True)
@@ -210,14 +234,7 @@ class FeynmanTestSubject(TestSubject):
             "bench_feynopt_qasm3" if t.syntax == Syntax.QASM3 else "bench_feynopt",
             [str(t.ref_path)],
             ["feynopt_bench_deps"],
-            variables={
-                "opt_params": self.opt_params,
-                "opt_file": ns.escape_path(str(t.opt_path)),
-                "log_file": ns.escape_path(str(t.log_path)),
-                "time_file": ns.escape_path(str(t.time_path)),
-                "ulimit_time": c.time_limit_s,
-                "ulimit_mem": c.memory_limit_k,
-            },
+            variables=TestSubject.test_vars(c, t) | {"opt_params": self.opt_params},
         )
         return t
 
@@ -302,13 +319,71 @@ class MlvoqcTestSubject(TestSubject):
             "bench_mlvoqc",
             [str(t.ref_path)],
             ["mlvoqc_bench_deps"],
-            variables={
-                "opt_file": ns.escape_path(str(t.opt_path)),
-                "log_file": ns.escape_path(str(t.log_path)),
-                "time_file": ns.escape_path(str(t.time_path)),
-                "ulimit_time": c.time_limit_s,
-                "ulimit_mem": c.memory_limit_k,
-            },
+            variables=TestSubject.test_vars(c, t),
+        )
+        return t
+
+
+class PyzxTestSubject(TestSubject):
+    path: Path = Path("pyzx")
+
+    select_syntax = TestSubject.select_circuit_syntax
+
+    def emit_test(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> TestResults:
+        w.build(
+            [str(t.opt_path), str(t.log_path), str(t.time_path)],
+            "bench_pyzx",
+            [str(t.ref_path)],
+            [],
+            variables=TestSubject.test_vars(c, t),
+        )
+        return t
+
+
+class PyzxToddTestSubject(TestSubject):
+    path: Path = Path("pyzx")
+
+    select_syntax = TestSubject.select_circuit_syntax
+
+    def emit_test(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> TestResults:
+        w.build(
+            [str(t.opt_path), str(t.log_path), str(t.time_path)],
+            "bench_pyzx_todd",
+            [str(t.ref_path)],
+            [],
+            variables=TestSubject.test_vars(c, t),
+        )
+        return t
+
+
+class FeynmanPyzxTestSubject(TestSubject):
+    paths: list[Path] = [Path("feynman"), Path("pyzx")]
+
+    @property
+    def subject_paths(self) -> Path:
+        global args
+        return [(args.run_path / p).resolve() for p in self.paths]
+
+    select_syntax = TestSubject.select_qc_syntax
+
+    def validate(self):
+        for p in self.subject_paths:
+            if not p.is_dir():
+                raise Exception(f"Didn't find subject dir at '{self.subject_path}')")
+
+    def emit_test(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> TestResults:
+        w.build(
+            [str(t.opt_path), str(t.log_path), str(t.time_path)],
+            "bench_feynopt_pyzx",
+            [str(t.ref_path)],
+            ["feynopt_bench_deps"],
+            variables=TestSubject.test_vars(c, t),
         )
         return t
 
@@ -334,13 +409,7 @@ class QuartzTestSubject(TestSubject):
             "bench_quartz",
             [str(t.ref_path)],
             ["quartz_bench_deps"],
-            variables={
-                "opt_file": ns.escape_path(str(t.opt_path)),
-                "log_file": ns.escape_path(str(t.log_path)),
-                "time_file": ns.escape_path(str(t.time_path)),
-                "ulimit_time": c.time_limit_s,
-                "ulimit_mem": c.memory_limit_k,
-            },
+            variables=TestSubject.test_vars(c, t),
         )
         return t
 
@@ -366,14 +435,10 @@ class QuesoTestSubject(TestSubject):
             "bench_queso",
             [str(t.ref_path)],
             ["queso_bench_deps"],
-            variables={
-                "opt_file": ns.escape_path(str(t.opt_path)),
-                "log_file": ns.escape_path(str(t.log_path)),
-                "time_file": ns.escape_path(str(t.time_path)),
+            variables=TestSubject.test_vars(c, t)
+            | {
                 "queso_time": self.queso_time_s,
                 "queso_mem": self.queso_mem_k,
-                "ulimit_time": c.time_limit_s,
-                "ulimit_mem": c.memory_limit_k,
             },
         )
         return t
@@ -392,13 +457,31 @@ class QuizxTestSubject(TestSubject):
             "bench_voqc",
             [str(t.ref_path)],
             [str(self.bench_bin_path)],
-            variables={
-                "opt_file": ns.escape_path(str(t.opt_path)),
-                "log_file": ns.escape_path(str(t.log_path)),
-                "time_file": ns.escape_path(str(t.time_path)),
-                "ulimit_time": c.time_limit_s,
-                "ulimit_mem": c.memory_limit_k,
-            },
+            variables=TestSubject.test_vars(c, t),
+        )
+        return t
+
+
+class VvQcoTestSubject(TestSubject):
+    path: Path = Path("vv-qco")
+
+    select_syntax = TestSubject.select_qc_syntax
+
+    opt_alg: str
+
+    def __init__(self, opt_alg: str):
+        super().__init__()
+        self.opt_alg = opt_alg
+
+    def emit_test(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> TestResults:
+        w.build(
+            [str(t.opt_path), str(t.log_path), str(t.time_path)],
+            "bench_vv_qco",
+            [str(t.ref_path)],
+            [],
+            variables=TestSubject.test_vars(c, t) | {"opt_alg": self.opt_alg},
         )
         return t
 
@@ -409,13 +492,19 @@ subject_ctors_by_name: dict[str, Callable] = {
     "feynman": lambda: FeynmanTestSubject("-O2"),
     "feynman-apf": lambda: FeynmanTestSubject("-apf"),
     "feynman-ppf": lambda: FeynmanTestSubject("-ppf"),
+    "feynman-pyzx": FeynmanPyzxTestSubject,
     "mlvoqc": MlvoqcTestSubject,
-    # "pyzx": PyzxTestSubject,
+    "pyzx": PyzxTestSubject,
+    "pyzx-todd": PyzxToddTestSubject,
     "quartz": QuartzTestSubject,
     "queso": lambda: QuesoTestSubject(45, 4 * 1024 * 1024),
     "quizx": QuizxTestSubject,
     # "topt": ToptTestSubject,
-    # "vv-qco": VvQcoTestSubject,
+    "vv-qco-bbmerge": lambda: VvQcoTestSubject("bbmerge"),
+    "vv-qco-fasttmerge": lambda: VvQcoTestSubject("fasttmerge"),
+    "vv-qco-internalhopt": lambda: VvQcoTestSubject("internalhopt"),
+    "vv-qco-tohpe": lambda: VvQcoTestSubject("tohpe"),
+    "vv-qco-fasttodd": lambda: VvQcoTestSubject("fasttodd"),
 }
 
 
@@ -427,8 +516,7 @@ def make_subject(name: str) -> TestSubject:
         s: TestSubject = subject_ctors_by_name[name]()
         s.name = name
         # The sanity check right now just tests if there's a folder for the subject
-        if not s.subject_path.is_dir():
-            raise Exception(f"Didn't find subject dir at '{s.subject_path}')")
+        s.validate()
         subjects[name] = s
     return s
 
@@ -485,7 +573,15 @@ def make_benchmark(
 benchmark_ctors_by_name: dict[str, Callable] = {
     "minimal": lambda: make_benchmark(
         "minimal",
-        ["feynman", "feynman-ppf", "mlvoqc", "quartz", "queso"],
+        [
+            "feynman",
+            # "feynman-ppf",
+            # "mlvoqc",
+            # "quartz",
+            # "queso",
+            # "feynman-pyzx",
+            "vv-qco-fasttodd",
+        ],
         [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
         ["qft_4", "tof_4", "mod_adder_1024"] + ["if-simple", "loop-simple"],
         memory_limit=8 * 1024 * 1024,
@@ -497,8 +593,12 @@ benchmark_ctors_by_name: dict[str, Callable] = {
             "feynman",
             "feynman-apf",
             "feynman-ppf",
+            "feynman-pyzx",
             "mlvoqc",
-            "quartz",  # ,"queso","pyzx", "vv-qco",
+            "pyzx",
+            "pyzx-todd",
+            "quartz",
+            "queso",
         ],
         [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
         [
