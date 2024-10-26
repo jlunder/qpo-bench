@@ -9,7 +9,7 @@ __version__ = "0.1"
 
 from datetime import datetime
 
-start_time = datetime.now()
+start_ts = datetime.now()
 
 
 import argparse
@@ -20,7 +20,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
-from subprocess import Popen
+from subprocess import Popen, PIPE
 import sys
 from typing import Callable, Iterable
 import csv
@@ -37,8 +37,7 @@ class Args:
     list_benchmarks: bool = False
     benchmarks: list[str] | None = None
 
-    run_ts: datetime = start_time
-    bench_ts: str = start_time.strftime("%Y-%m-%d_%H-%M-%S")
+    bench_ts: str = start_ts.strftime("%Y-%m-%d_%H-%M-%S")
     run_path: Path = Path(os.curdir).absolute()
     bench_bench: Path = Path("bench")
     bench_build: Path = Path("bench/build")
@@ -157,10 +156,10 @@ class TestSubject:
     ) -> TestResults:
         if False:
             pass
-        elif r.qasm_res:
-            return replace(t, syntax=Syntax.QASM, ref_path=Path(r.qasm_res))
         elif r.qc_res:
             return replace(t, syntax=Syntax.QC, ref_path=Path(r.qc_res))
+        elif r.qasm_res:
+            return replace(t, syntax=Syntax.QASM, ref_path=Path(r.qasm_res))
         elif r.qasm3_res:
             return replace(t, syntax=Syntax.QASM3, ref_path=Path(r.qasm3_res))
         else:
@@ -199,8 +198,15 @@ class TestSubject:
     # is a list of results where the formatted output will go
     def emit_test(
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
-    ) -> list[TestResults]:
+    ) -> TestResults:
         pass
+
+    def emit_analyze(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> AnalysisResults:
+        return emit_feyncount_analyze(
+            w, t.resource_name, t.opt_path.parent, t.syntax, t.ref_path
+        )
 
     @staticmethod
     def test_vars(c: BenchmarkConfig, t: TestResults) -> dict[str, any]:
@@ -220,6 +226,84 @@ class Benchmark:
     config: BenchmarkConfig
 
 
+def emit_generic_analyze(
+    w: ns.Writer,
+    resource_name: str,
+    out_path: Path,
+    syntax: Syntax,
+    ref_path: Path,
+    analyze_rule: str,
+    analyze_deps: list[str],
+) -> AnalysisResults:
+    base = ref_path.stem
+    analysis_path = out_path / f"{base}_{syntax}_analysis.json"
+    log_path = out_path / f"{base}_{syntax}_analysis.log"
+    time_path = out_path / f"{base}_{syntax}_analysis_time.json"
+    w.build(
+        [str(analysis_path), str(log_path), str(time_path)],
+        analyze_rule,
+        [str(ref_path)],
+        analyze_deps,
+        variables={
+            "analysis_file": ns.escape_path(str(analysis_path)),
+            "analysis_log_file": ns.escape_path(str(log_path)),
+            "analysis_time_file": ns.escape_path(str(time_path)),
+        },
+    )
+    return AnalysisResults(
+        resource_name, syntax, ref_path, analysis_path, log_path, time_path
+    )
+
+
+def emit_feyncount_analyze(
+    w: ns.Writer, res: str, p: Path, syntax: Syntax, ref: Path
+) -> AnalysisResults:
+    rule = "feyncount_analyze"
+    deps = ["feyncount_analyze_deps"]
+    return emit_generic_analyze(w, res, p, syntax, ref, rule, deps)
+
+
+def emit_feyncount_qasm3_analyze(
+    w: ns.Writer, res: str, p: Path, syntax: Syntax, ref: Path
+) -> AnalysisResults:
+    rule = "feyncount_qasm3_analyze"
+    deps = ["feyncount_analyze_deps"]
+    return emit_generic_analyze(w, res, p, syntax, ref, rule, deps)
+
+
+def emit_pyzx_analyze(
+    w: ns.Writer, res: str, p: Path, syntax: Syntax, ref: Path
+) -> AnalysisResults:
+    return emit_generic_analyze(w, res, p, syntax, ref, "pyzx_analyze", [])
+
+
+def emit_verify(
+    self, w: ns.Writer, out_path: Path, to_verify: list[TestResults]
+) -> list[TestResults]:
+    verified_result = []
+    for result in to_verify:
+        verify_log_path = out_path / (res.name + "_verify.log")
+        verify_time_path = out_path / (res.name + "_verify_time.json")
+        w.build(
+            [str(verify_log_path), str(verify_time_path)],
+            "feynver_verify",
+            [str(result.opt_path)],
+            ["feynver_verify_deps"],
+            variables={
+                "ref_file": ns.escape_path(str(result.ref_path)),
+                "log_file": ns.escape_path(str(verify_log_path)),
+                "time_file": ns.escape_path(str(verify_time_path)),
+            },
+        )
+        verified_result.append(
+            replace(
+                result,
+                verify_log_path=verify_log_path,
+                verify_time_path=verify_time_path,
+            )
+        )
+
+
 class FeynmanTestSubject(TestSubject):
     path: Path = Path("feynman")
 
@@ -231,7 +315,9 @@ class FeynmanTestSubject(TestSubject):
 
     select_syntax = TestSubject.select_any_syntax
 
-    def emit_test(self, w: ns.Writer, c: BenchmarkConfig, t: TestResults):
+    def emit_test(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> TestResults:
         w.build(
             [str(t.opt_path), str(t.log_path), str(t.time_path)],
             "bench_feynopt_qasm3" if t.syntax == Syntax.QASM3 else "bench_feynopt",
@@ -240,69 +326,6 @@ class FeynmanTestSubject(TestSubject):
             variables=TestSubject.test_vars(c, t) | {"opt_params": self.opt_params},
         )
         return t
-
-    def emit_analysis(
-        self,
-        w: ns.Writer,
-        resource_name: str,
-        out_path: Path,
-        syntax: Syntax,
-        ref_path: Path,
-    ) -> AnalysisResults:
-        base = ref_path.stem
-        analysis_path = out_path / f"{base}_{syntax}_analysis.json"
-        log_path = out_path / f"{base}_{syntax}_analysis.log"
-        time_path = out_path / f"{base}_{syntax}_analysis_time.json"
-        vars = {
-            "analysis_file": ns.escape_path(str(analysis_path)),
-            "analysis_log_file": ns.escape_path(str(log_path)),
-            "analysis_time_file": ns.escape_path(str(time_path)),
-        }
-        if syntax == Syntax.QASM3:
-            w.build(
-                [str(analysis_path), str(log_path), str(time_path)],
-                "feyncount_qasm3_analyze",
-                [str(ref_path)],
-                ["feyncount_analyze_deps"],
-                variables=vars,
-            )
-        else:
-            w.build(
-                [str(analysis_path), str(log_path), str(time_path)],
-                "feyncount_analyze",
-                [str(ref_path)],
-                ["feyncount_analyze_deps"],
-                variables=vars,
-            )
-        return AnalysisResults(
-            resource_name, syntax, ref_path, analysis_path, log_path, time_path
-        )
-
-    def emit_verify(
-        self, w: ns.Writer, out_path: Path, to_verify: list[TestResults]
-    ) -> list[TestResults]:
-        verified_result = []
-        for result in to_verify:
-            verify_log_path = out_path / (res.name + "_verify.log")
-            verify_time_path = out_path / (res.name + "_verify_time.json")
-            w.build(
-                [str(verify_log_path), str(verify_time_path)],
-                "feynver_verify",
-                [str(result.opt_path)],
-                ["feynver_verify_deps"],
-                variables={
-                    "ref_file": ns.escape_path(str(result.ref_path)),
-                    "log_file": ns.escape_path(str(verify_log_path)),
-                    "time_file": ns.escape_path(str(verify_time_path)),
-                },
-            )
-            verified_result.append(
-                replace(
-                    result,
-                    verify_log_path=verify_log_path,
-                    verify_time_path=verify_time_path,
-                )
-            )
 
 
 class MlvoqcTestSubject(TestSubject):
@@ -330,7 +353,7 @@ class MlvoqcTestSubject(TestSubject):
 class PyzxTestSubject(TestSubject):
     path: Path = Path("pyzx")
 
-    select_syntax = TestSubject.select_circuit_syntax
+    select_syntax = TestSubject.select_qasm_syntax
 
     def emit_test(
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
@@ -344,11 +367,18 @@ class PyzxTestSubject(TestSubject):
         )
         return t
 
+    def emit_analyze(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> AnalysisResults:
+        return emit_pyzx_analyze(
+            w, t.resource_name, t.opt_path.parent, t.syntax, t.ref_path
+        )
+
 
 class PyzxToddTestSubject(TestSubject):
     path: Path = Path("pyzx")
 
-    select_syntax = TestSubject.select_circuit_syntax
+    select_syntax = TestSubject.select_qasm_syntax
 
     def emit_test(
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
@@ -691,6 +721,14 @@ benchmark_ctors_by_name: dict[str, Callable] = {
         memory_limit=8 * 1024 * 1024,
         time_limit=60,
     ),
+    "minimal-all": lambda: make_benchmark(
+        "minimal-all",
+        popl25_subjects,
+        [Measurable.T_COUNT, Measurable.TIME, Measurable.MAX_MEMORY],
+        ["qft_4", "tof_4", "mod_adder_1024"] + ["if-simple", "loop-simple"],
+        memory_limit=8 * 1024 * 1024,
+        time_limit=60,
+    ),
 }
 
 benchmark_ctors_by_name |= {
@@ -731,6 +769,8 @@ def validate_paths(args: Args):
 
 @dataclass(frozen=True)
 class DataRow:
+    hostname: str
+    start_ts: str
     benchmark: str
     subject: str
     resource: str
@@ -757,25 +797,42 @@ def read_analysis_results(analysis_path: Path) -> int | None:
         t_gates = int(res["gates"].get("T", 0))
     except:
         pass
-    return t_gates
+    return {"t_gates": t_gates}
 
 
-def read_time_results(time_path: Path):
-    user_time = None
-    sys_time = None
-    elapsed_time = None
-    max_resident = None
-    status = None
+default_hostname = (
+    Popen(["hostname", "-f"], stdout=PIPE)
+    .communicate()[0]
+    .decode(errors="ignore")
+    .strip()
+)
+default_start_ts = start_ts.isoformat(timespec="seconds")
+
+
+def read_time_results(time_path: Path) -> dict[str, any]:
+    global default_hostname, default_start_ts
     try:
-        res = json.load(open(time_path, "r"))
-        user_time = float(res["user"])
-        sys_time = float(res["system"])
-        elapsed_time = float(res["elapsed"])
-        max_resident = int(res["maxresident"])
-        status = int(res["status"])
+        loaded = json.load(open(time_path, "r"))
     except:
         pass
-    return (user_time, sys_time, elapsed_time, max_resident, status)
+    time_required_keys = [
+        ("hostname", default_hostname, str),
+        ("start_ts", default_start_ts, str),
+        ("user_time", None, float),
+        ("sys_time", None, float),
+        ("elapsed_time", None, float),
+        ("max_resident", None, int),
+        ("status", None, int),
+    ]
+    results = {}
+    for k, d, f in time_required_keys:
+        results[k] = d
+        try:
+            if k in loaded:
+                results[k] = f(loaded[k])
+        except:
+            pass
+    return results
 
 
 def run_benchmark(b: Benchmark):
@@ -842,25 +899,26 @@ def run_benchmark(b: Benchmark):
         # optimizations
         ref_build_path = build_path / "ref"
         os.makedirs(ref_build_path)
-        a_sub: FeynmanTestSubject = make_subject("feynman")
-        refs_analysis: list[AnalysisResults] = [
-            a_sub.emit_analysis(w, resource_name, ref_build_path, syntax, ref_path)
-            for ref_path, resource_name, syntax in sorted(
-                set(((t.ref_path, t.resource_name, t.syntax) for t in tests))
-            )
-        ]
+        refs_analysis: list[AnalysisResults] = []
+        for ref_path, resource_name, syntax in sorted(
+            set(((t.ref_path, t.resource_name, t.syntax) for t in tests))
+        ):
+            if syntax == Syntax.QASM3:
+                a = emit_feyncount_qasm3_analyze(
+                    w, resource_name, ref_build_path, syntax, ref_path
+                )
+            else:
+                a = emit_feyncount_qasm3_analyze(
+                    w, resource_name, ref_build_path, syntax, ref_path
+                )
+            refs_analysis.append(a)
 
         # Make analysis targets for test results and annotate the test
         # results with them
-        tests = [
-            replace(
-                t,
-                opt_analysis=a_sub.emit_analysis(
-                    w, t.resource_name, t.opt_path.parent, t.syntax, t.opt_path
-                ),
-            )
-            for t in tests
-        ]
+        def emit_analyze(t: TestResults):
+            subjects[t.subject_name].emit_analyze(w, b.config, t)
+
+        tests = [replace(t, opt_analysis=emit_analyze(t)) for t in tests]
 
         w.build(
             "all",
@@ -890,82 +948,52 @@ def run_benchmark(b: Benchmark):
     ref_rows: dict[tuple[str, str], tuple[DataRow, AnalysisResults]] = {}
 
     for a in refs_analysis:
-        t_gates = read_analysis_results(a.results_path)
-        (_, _, _, _, status) = read_time_results(a.time_path)
-        r = DataRow(
-            b.name,
-            "ref",
-            a.resource_name,
-            a.syntax,
-            None,
-            t_gates,
-            None,
-            None,
-            None,
-            None,
-            status,
-        )
+        results = {
+            "benchmark": b.name,
+            "subject": "ref",
+            "resource": a.resource_name,
+            "syntax": a.syntax,
+            "ref_t_gates": None,
+        }
+        results |= read_time_results(a.time_path)
+        results |= read_analysis_results(a.results_path)
+        r = DataRow(**results)
         ref_rows[(a.resource_name, a.syntax)] = (r, a)
         rows.append(r)
     for t in tests:
-        ref_t_gates = None
-        ref = ref_rows.get((t.resource_name, t.syntax), None)
-        if ref != None:
-            ref_t_gates = ref[0].t_gates
-        t_gates = read_analysis_results(
+        results = {
+            "benchmark": b.name,
+            "subject": t.subject_name,
+            "resource": t.resource_name,
+            "syntax": t.syntax,
+        }
+        results |= read_time_results(t.time_path)
+        results |= read_analysis_results(
             t.opt_analysis.results_path if t.opt_analysis != None else None
         )
-        (user_time, sys_time, elapsed_time, max_resident, status) = read_time_results(
-            t.time_path
-        )
-        rows.append(
-            DataRow(
-                t.benchmark_name,
-                t.subject_name,
-                t.resource_name,
-                t.syntax,
-                ref_t_gates,
-                t_gates,
-                user_time,
-                sys_time,
-                elapsed_time,
-                max_resident,
-                status,
-            )
-        )
+        ref = ref_rows.get((t.resource_name, t.syntax), None)
+        results["ref_t_gates"] = ref[0].t_gates if ref != None else None
+        rows.append(DataRow(**results))
 
     cw = csv.writer(open(build_path / f"{b.name}_{args.bench_ts}.csv", "w"))
-    cw.writerow(
-        [
-            "benchmark",
-            "subject",
-            "resource",
-            "syntax",
-            "reference t gates",
-            "t gates",
-            "user time (s)",
-            "sys time (s)",
-            "elapsed time (s)",
-            "max resident (kiB)",
-            "exit status",
-        ]
-    )
+    cols = [
+        ("hostname", "hostname"),
+        ("start time", "start_ts"),
+        ("benchmark", "benchmark"),
+        ("subject", "subject"),
+        ("resource", "resource"),
+        ("syntax", "syntax"),
+        ("reference t gates", "ref_t_gates"),
+        ("t gates", "t_gates"),
+        ("user time (s)", "user_time"),
+        ("sys time (s)", "sys_time"),
+        ("elapsed time (s)", "elapsed_time"),
+        ("max resident (kiB)", "max_resident"),
+        ("exit status", "status"),
+    ]
+    cw.writerow([k for name, k in cols])
     for r in rows:
-        cw.writerow(
-            [
-                r.benchmark,
-                r.subject,
-                r.resource,
-                r.syntax,
-                r.ref_t_gates,
-                r.t_gates,
-                r.user_time,
-                r.sys_time,
-                r.elapsed_time,
-                r.max_resident,
-                r.status,
-            ]
-        )
+        cw.writerow([r.__dict__[k] for _, k in cols])
     del cw
 
 
@@ -994,6 +1022,8 @@ if __name__ == "__main__":
 
         detect_run_path(args)
         validate_paths(args)
+        logger.info("Default hostname: '%s'", default_hostname)
+        logger.info("Default start time: '%s'", default_start_ts)
 
         if len(args.benchmarks) < 1:
             arg_parser.error(

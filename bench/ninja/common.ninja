@@ -1,5 +1,6 @@
-time_flags = -q -f '{"user": %U, "system": %S, "elapsed": %e, $
-    "avgtext": %X, "avgdata": %D, "avgstack": %p, "maxresident": %M, $
+time_flags = -q -f '{"hostname": "'`hostname -f`'", "start_ts": "'`date -Is`'",$
+    "user_time": %U, "sys_time": %S, "elapsed_time": %e, $
+    "avg_text": %X, "avg_data": %D, "avg_stack": %p, "max_resident": %M, $
     "swaps": %W, "status": %x}'
 
 # ulimit_time = 3600
@@ -84,7 +85,7 @@ rule pyzx_analyze
             ulimit -t ${ulimit_time}; $
             . ${bench_root}/.venv/bin/activate; $
             cd ${subject_root_pyzx} && $
-            python pyzx_analyze.py '\''${in}'\'' > '\''${analysis_result_file}'\'' $
+            python pyzx_analyze.py '\''${in}'\'' > '\''${analysis_file}'\'' $
                 2> '\''${analysis_log_file}'\'' $
             ' || true
 
@@ -350,9 +351,9 @@ rule bench_vv_qco
                 > '\''${opt_file}_p0.qc'\'' 2>> '\''${log_file}'\'' && $
             cd ${subject_root_vv_qco} && $
             echo '\''Stage 2: vv-qco'\'' >> '\''${log_file}'\'' && $
-            rm -f circuits/output/*.qc && $
-            cargo run -r ${opt_alg} '\''${opt_file}_p0.qc'\'' 2>&1 > '\''${log_file}'\'' && $
-            mv circuits/output/*.qc '\''${opt_file}'\'' 2>&1 >> '\''${log_file}'\'' $
+            rm -f circuits/outputs/*.qc && $
+            cargo run -r ${opt_alg} '\''${opt_file}_p0.qc'\'' 2>&1 >> '\''${log_file}'\'' && $
+            cat circuits/outputs/*.qc > '\''${opt_file}'\'' 2>> '\''${log_file}'\'' $
             ' || true
     pool = feynman_cabal
 
