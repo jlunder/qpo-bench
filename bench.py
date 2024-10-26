@@ -356,7 +356,7 @@ class MlvoqcTestSubject(TestSubject):
     def bench_bin_path(self) -> Path:
         return self.subject_path / "_build/default/bench_voqc.exe"
 
-    select_syntax = TestSubject.select_qasm_ccz_syntax
+    select_syntax = TestSubject.select_qasm_syntax
 
     def emit_test(
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults

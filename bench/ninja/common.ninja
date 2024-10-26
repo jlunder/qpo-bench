@@ -142,8 +142,10 @@ rule bench_mlvoqc
         timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
             cd ${subject_root_mlvoqc} && $
-            '\''${mlvoqc_bench_voqc}'\'' -f '\''$in'\'' -o '\''$opt_file'\'' $
-                2>&1 > '\''$log_file'\'' $
+            '\''${mlvoqc_bench_voqc}'\'' -f '\''${in}'\'' $
+                -o '\''${opt_file}_rzq.qasm'\'' 2>&1 > '\''${log_file}'\'' && $
+            sed -E -e '\''s!^rzq\(([0-9]+),([0-9]+)\)!rz(\1*pi/\2)!'\'' $
+                '\''${opt_file}_rzq.qasm'\'' > '\''${opt_file}'\'' $
             ' || true
 
 
