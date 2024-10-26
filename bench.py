@@ -205,7 +205,7 @@ class TestSubject:
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
     ) -> AnalysisResults:
         return emit_feyncount_analyze(
-            w, t.resource_name, t.opt_path.parent, t.syntax, t.ref_path
+            w, t.resource_name, t.opt_path.parent, t.syntax, t.opt_path
         )
 
     @staticmethod
@@ -231,18 +231,18 @@ def emit_generic_analyze(
     resource_name: str,
     out_path: Path,
     syntax: Syntax,
-    ref_path: Path,
+    in_path: Path,
     analyze_rule: str,
     analyze_deps: list[str],
 ) -> AnalysisResults:
-    base = ref_path.stem
+    base = in_path.stem
     analysis_path = out_path / f"{base}_{syntax}_analysis.json"
     log_path = out_path / f"{base}_{syntax}_analysis.log"
     time_path = out_path / f"{base}_{syntax}_analysis_time.json"
     w.build(
         [str(analysis_path), str(log_path), str(time_path)],
         analyze_rule,
-        [str(ref_path)],
+        [str(in_path)],
         analyze_deps,
         variables={
             "analysis_file": ns.escape_path(str(analysis_path)),
@@ -251,30 +251,30 @@ def emit_generic_analyze(
         },
     )
     return AnalysisResults(
-        resource_name, syntax, ref_path, analysis_path, log_path, time_path
+        resource_name, syntax, in_path, analysis_path, log_path, time_path
     )
 
 
 def emit_feyncount_analyze(
-    w: ns.Writer, res: str, p: Path, syntax: Syntax, ref: Path
+    w: ns.Writer, res: str, out: Path, syntax: Syntax, tgt: Path
 ) -> AnalysisResults:
     rule = "feyncount_analyze"
     deps = ["feyncount_analyze_deps"]
-    return emit_generic_analyze(w, res, p, syntax, ref, rule, deps)
+    return emit_generic_analyze(w, res, out, syntax, tgt, rule, deps)
 
 
 def emit_feyncount_qasm3_analyze(
-    w: ns.Writer, res: str, p: Path, syntax: Syntax, ref: Path
+    w: ns.Writer, res: str, out: Path, syntax: Syntax, tgt: Path
 ) -> AnalysisResults:
     rule = "feyncount_qasm3_analyze"
     deps = ["feyncount_analyze_deps"]
-    return emit_generic_analyze(w, res, p, syntax, ref, rule, deps)
+    return emit_generic_analyze(w, res, out, syntax, tgt, rule, deps)
 
 
 def emit_pyzx_analyze(
-    w: ns.Writer, res: str, p: Path, syntax: Syntax, ref: Path
+    w: ns.Writer, res: str, out: Path, syntax: Syntax, tgt: Path
 ) -> AnalysisResults:
-    return emit_generic_analyze(w, res, p, syntax, ref, "pyzx_analyze", [])
+    return emit_generic_analyze(w, res, out, syntax, tgt, "pyzx_analyze", [])
 
 
 def emit_verify(
@@ -371,7 +371,7 @@ class PyzxTestSubject(TestSubject):
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
     ) -> AnalysisResults:
         return emit_pyzx_analyze(
-            w, t.resource_name, t.opt_path.parent, t.syntax, t.ref_path
+            w, t.resource_name, t.opt_path.parent, t.syntax, t.opt_path
         )
 
 
@@ -916,7 +916,7 @@ def run_benchmark(b: Benchmark):
         # Make analysis targets for test results and annotate the test
         # results with them
         def emit_analyze(t: TestResults):
-            subjects[t.subject_name].emit_analyze(w, b.config, t)
+            return subjects[t.subject_name].emit_analyze(w, b.config, t)
 
         tests = [replace(t, opt_analysis=emit_analyze(t)) for t in tests]
 
