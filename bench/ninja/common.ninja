@@ -3,9 +3,7 @@ time_flags = -q -f '{"hostname": "'`hostname -f`'", "start_ts": "'`date -Is`'",$
     "avg_text": %X, "avg_data": %D, "avg_stack": %p, "max_resident": %M, $
     "swaps": %W, "status": %x}'
 
-# ulimit_time = 3600
-ulimit_time = 30
-# ulimit_mem = 33554432
+ulimit_time = 3600
 ulimit_mem = 16777216
 
 subject_root_feynman = ${bench_root}/feynman
@@ -30,9 +28,8 @@ build feyncount_analyze_deps: build_feyncount
 
 rule feyncount_analyze
     command = /bin/time ${time_flags} -o '${analysis_time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_feynman} && $
             cabal exec -v0 -O2 feyncount -- '\''${in}'\'' $
                 > '\''${analysis_file}'\'' 2> '\''${analysis_log_file}'\'' $
@@ -41,9 +38,8 @@ rule feyncount_analyze
 
 rule feyncount_qasm3_analyze
     command = /bin/time ${time_flags} -o '${analysis_time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_feynman} && $
             cabal exec -v0 -O2 feyncount -- -qasm3 '\''${in}'\'' $
                 > '\''${analysis_file}'\'' 2> '\''${analysis_log_file}'\'' $
@@ -58,9 +54,8 @@ build feynver_verify_deps: build_feynver
 
 rule feynver_verify
     command = /bin/time ${time_flags} -o '${verif_time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_feynman} && $
             cabal exec -v0 -O2 feynver -- '\''${ref_file}'\'' '\''${opt_file}'\'' $
                 > '\''${verif_result_file}'\'' 2> '\''${verif_log_file}'\'' $
@@ -69,9 +64,8 @@ rule feynver_verify
 
 rule feynver_qasm3_verify
     command = /bin/time ${time_flags} -o '${verif_time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_feynman} && $
             cabal exec -v0 -O2 feynver -- -qasm3 '\''${ref_file}'\'' '\''${opt_file}'\'' $
                 > '\''${verif_result_file}'\'' 2> '\''${verif_log_file}'\'' $
@@ -80,9 +74,8 @@ rule feynver_qasm3_verify
 
 rule pyzx_analyze
     command = /bin/time ${time_flags} -o '${analysis_time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             . ${bench_root}/.venv/bin/activate; $
             cd ${subject_root_pyzx} && $
             python pyzx_analyze.py '\''${in}'\'' > '\''${analysis_file}'\'' $
@@ -91,9 +84,8 @@ rule pyzx_analyze
 
 rule pyzx_verify
     command = /bin/time ${time_flags} -o '${verif_time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             . ${bench_root}/.venv/bin/activate; $
             cd ${subject_root_pyzx} && $
             python pyzx_verify.py '\''${ref_file}'\'' '\''${opt_file}'\'' $
@@ -111,9 +103,8 @@ build feynopt_bench_deps: build_feynopt
 
 rule bench_feynopt
     command = /bin/time ${time_flags} -o '$time_file' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_feynman} && $
             cabal exec -v0 -O2 feynopt -- ${opt_params} '\''${in}'\'' $
                 > '\''${opt_file}'\'' 2> '\''${log_file}'\'' $
@@ -122,9 +113,8 @@ rule bench_feynopt
 
 rule bench_feynopt_qasm3
     command = /bin/time ${time_flags} -o '$time_file' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_feynman} && $
             cabal exec -v0 -O2 feynopt -- ${opt_params} -qasm3 '\''${in}'\'' $
                 > '\''${opt_file}'\'' 2> '\''${log_file}'\'' $
@@ -149,9 +139,8 @@ build mlvoqc_bench_deps: phony || ${mlvoqc_bench_voqc}
 
 rule bench_mlvoqc
     command = /bin/time ${time_flags} -o '$time_file' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_mlvoqc} && $
             '\''${mlvoqc_bench_voqc}'\'' -f '\''$in'\'' -o '\''$opt_file'\'' $
                 2>&1 > '\''$log_file'\'' $
@@ -162,9 +151,8 @@ rule bench_mlvoqc
 
 rule bench_pyzx
     command = /bin/time ${time_flags} -o '${time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             . ${bench_root}/.venv/bin/activate; $
             cd ${subject_root_pyzx} && $
             python bench_pyzx.py -v '\''${in}'\'' '\''${opt_file}'\'' $
@@ -173,9 +161,8 @@ rule bench_pyzx
 
 rule bench_pyzx_todd
     command = /bin/time ${time_flags} -o '$time_file' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             . ${bench_root}/.venv/bin/activate; $
             cd ${subject_root_pyzx} && $
             python bench_pyzx_todd.py -v '\''${in}'\'' '\''${opt_file}'\'' $
@@ -184,9 +171,8 @@ rule bench_pyzx_todd
 
 rule bench_feynopt_pyzx
     command = /bin/time ${time_flags} -o '$time_file' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             . ${bench_root}/.venv/bin/activate; $
             cd ${subject_root_feynman} && $
             echo '\''Stage 1: feynopt -qpf'\'' > '\''${log_file}'\'' && $
@@ -237,9 +223,8 @@ build quartz_bench_deps: phony || $
 
 rule bench_quartz
     command = /bin/time ${time_flags} -o '${time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_quartz} && $
             '\''${quartz_bench_quartz}'\'' '\''${in}'\'' $
                 --eqset '\''${quartz_ecc_set}'\'' $
@@ -277,9 +262,8 @@ build queso_bench_deps: phony || $
 
 rule bench_queso
     command = /bin/time ${time_flags} -o '${time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_queso} && $
             java --enable-preview -Xmx${queso_mem}k -cp ${queso_target_jar} Optimizer $
                 -c '\''${in}'\'' -g nam -r rules_q3_s6_nam.txt -sr rules_q3_s6_nam_symb.txt $
@@ -300,9 +284,8 @@ rule quizx_build
 
 rule bench_quizx
     command = /bin/time ${time_flags} -o '${time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_vv_qco} && $
             rm -f circuits/output/*.qc && $
             cargo run -r fasttodd '\''${in}'\'' 2>&1 > '\''${log_file}'\'' && $
@@ -342,9 +325,8 @@ rule vv_qco_build
 
 rule bench_vv_qco
     command = /bin/time ${time_flags} -o '${time_file}' -- $
-        /bin/sh -c '$
+        timeout ${ulimit_time} /bin/sh -c '$
             ulimit -v ${ulimit_mem}; $
-            ulimit -t ${ulimit_time}; $
             cd ${subject_root_feynman} && $
             echo '\''Stage 1: feynopt -O2'\'' > '\''${log_file}'\'' && $
             cabal exec -v0 -O2 feynopt -- -O2 '\''${in}'\'' $

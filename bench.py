@@ -78,6 +78,7 @@ class Measurable(Enum):
 class Syntax(StrEnum):
     QC = auto()
     QASM = auto()
+    QASM_CCZ = auto()
     QASM3 = auto()
 
 
@@ -86,6 +87,7 @@ class Resource:
     name: str
     qc_res: str | None
     qasm_res: str | None
+    qasm_ccz_res: str | None
     qasm3_res: str | None
 
 
@@ -190,6 +192,13 @@ class TestSubject:
             return replace(t, syntax=Syntax.QASM, ref_path=Path(r.qasm_res))
         return None
 
+    def select_qasm_ccz_syntax(
+        self, c: BenchmarkConfig, r: Resource, t: TestResults
+    ) -> TestResults:
+        if r.qasm_ccz_res:
+            return replace(t, syntax=Syntax.QASM_CCZ, ref_path=Path(r.qasm_ccz_res))
+        return None
+
     def validate(self):
         if not self.subject_path.is_dir():
             raise Exception(f"Didn't find subject dir at '{self.subject_path}')")
@@ -201,12 +210,24 @@ class TestSubject:
     ) -> TestResults:
         pass
 
-    def emit_analyze(
+    def emit_feyncount_analyze(
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
     ) -> AnalysisResults:
         return emit_feyncount_analyze(
             w, t.resource_name, t.opt_path.parent, t.syntax, t.opt_path
         )
+
+    def emit_pyzx_analyze(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> AnalysisResults:
+        return emit_pyzx_analyze(
+            w, t.resource_name, t.opt_path.parent, t.syntax, t.opt_path
+        )
+
+    def emit_analyze(
+        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
+    ) -> AnalysisResults:
+        return self.emit_feyncount_analyze(w, c, t)
 
     @staticmethod
     def test_vars(c: BenchmarkConfig, t: TestResults) -> dict[str, any]:
@@ -335,7 +356,7 @@ class MlvoqcTestSubject(TestSubject):
     def bench_bin_path(self) -> Path:
         return self.subject_path / "_build/default/bench_voqc.exe"
 
-    select_syntax = TestSubject.select_qasm_syntax
+    select_syntax = TestSubject.select_qasm_ccz_syntax
 
     def emit_test(
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
@@ -348,6 +369,8 @@ class MlvoqcTestSubject(TestSubject):
             variables=TestSubject.test_vars(c, t),
         )
         return t
+
+    emit_analyze = TestSubject.emit_pyzx_analyze
 
 
 class PyzxTestSubject(TestSubject):
@@ -367,12 +390,7 @@ class PyzxTestSubject(TestSubject):
         )
         return t
 
-    def emit_analyze(
-        self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
-    ) -> AnalysisResults:
-        return emit_pyzx_analyze(
-            w, t.resource_name, t.opt_path.parent, t.syntax, t.opt_path
-        )
+    emit_analyze = TestSubject.emit_pyzx_analyze
 
 
 class PyzxToddTestSubject(TestSubject):
@@ -432,7 +450,7 @@ class QuartzTestSubject(TestSubject):
     def bench_quartz_ecc_set_path(self) -> Path:
         return self.subject_path / "eccset/Clifford_T_5_3_complete_ECC_set.json"
 
-    select_syntax = TestSubject.select_qasm_syntax
+    select_syntax = TestSubject.select_qasm_ccz_syntax
 
     def emit_test(
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
@@ -458,7 +476,7 @@ class QuesoTestSubject(TestSubject):
         self.queso_time_s = queso_time_s
         self.queso_mem_k = queso_mem_k
 
-    select_syntax = TestSubject.select_qasm_syntax
+    select_syntax = TestSubject.select_qasm_ccz_syntax
 
     def emit_test(
         self, w: ns.Writer, c: BenchmarkConfig, t: TestResults
@@ -564,15 +582,17 @@ def make_resource(name: str) -> Resource:
         norm_res_path = (args.run_path / args.res_dir).resolve()
         qc_path = norm_res_path / "qc" / f"{name}.qc"
         qasm_path = norm_res_path / "qasm" / f"{name}.qasm"
+        qasm_ccz_path = norm_res_path / "qasm-ccz" / f"{name}.qasm"
         qasm3_path = norm_res_path / "qasm3" / f"{name}.qasm"
         r = Resource(
             name,
             str(qc_path) if qc_path.is_file() else None,
             str(qasm_path) if qasm_path.is_file() else None,
+            str(qasm_ccz_path) if qasm_ccz_path.is_file() else None,
             str(qasm3_path) if qasm3_path.is_file() else None,
         )
         # Sanity check
-        if r.qc_res == None and r.qasm3_res == None and r.qasm3_res == None:
+        if r.qc_res == None and r.qasm_res == None and r.qasm3_res == None:
             raise Exception(
                 f"Didn't find any files for resource '{name}' in "
                 + f"'{args.bench_build / args.bench_root / args.res_dir}'"
