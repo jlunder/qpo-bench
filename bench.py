@@ -279,15 +279,9 @@ def emit_generic_analyze(
 def emit_feyncount_analyze(
     w: ns.Writer, res: str, out: Path, syntax: Syntax, tgt: Path
 ) -> AnalysisResults:
-    rule = "feyncount_analyze"
-    deps = ["feyncount_analyze_deps"]
-    return emit_generic_analyze(w, res, out, syntax, tgt, rule, deps)
-
-
-def emit_feyncount_qasm3_analyze(
-    w: ns.Writer, res: str, out: Path, syntax: Syntax, tgt: Path
-) -> AnalysisResults:
-    rule = "feyncount_qasm3_analyze"
+    rule = (
+        "feyncount_qasm3_analyze" if resources[res].qasm3_res else "feyncount_analyze"
+    )
     deps = ["feyncount_analyze_deps"]
     return emit_generic_analyze(w, res, out, syntax, tgt, rule, deps)
 
@@ -502,6 +496,8 @@ class QuesoTestSubject(TestSubject):
             },
         )
         return t
+
+    emit_analyze = TestSubject.emit_pyzx_analyze
 
 
 class QuizxTestSubject(TestSubject):
@@ -933,15 +929,11 @@ def run_benchmark(b: Benchmark):
         for ref_path, resource_name, syntax in sorted(
             set(((t.ref_path, t.resource_name, t.syntax) for t in tests))
         ):
-            if syntax == Syntax.QASM3:
-                a = emit_feyncount_qasm3_analyze(
+            refs_analysis.append(
+                emit_feyncount_analyze(
                     w, resource_name, ref_build_path, syntax, ref_path
                 )
-            else:
-                a = emit_feyncount_qasm3_analyze(
-                    w, resource_name, ref_build_path, syntax, ref_path
-                )
-            refs_analysis.append(a)
+            )
 
         # Make analysis targets for test results and annotate the test
         # results with them
@@ -1024,6 +1016,26 @@ def run_benchmark(b: Benchmark):
     cw.writerow([k for name, k in cols])
     for r in rows:
         cw.writerow([r.__dict__[k] for _, k in cols])
+    del cw
+
+    cw = csv.writer(open(build_path / f"{b.name}_collated_{args.bench_ts}.csv", "w"))
+    cols = [
+        "resource",
+        "ref_t_gates",
+    ] + [s.name + "_t_gates" for s in b.subjects]
+    subject_idx = {"ref": 1} | {s.name: 2 + i for i, s in enumerate(b.subjects)}
+    collated = [cols]
+    for res in b.config.resources:
+        row = [res.name, None] + ([None] * len(b.subjects))
+        for r in rows:
+            if r.resource == res.name:
+                idx = subject_idx[r.subject]
+                if row[idx] is None:
+                    row[idx] = r.t_gates
+                elif row[idx] < r.t_gates:
+                    row[idx] = r.t_gates
+        collated.append(row)
+    cw.writerows(collated)
     del cw
 
 
