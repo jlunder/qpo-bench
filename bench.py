@@ -524,6 +524,7 @@ subjects: dict[str, TestSubject] = {}
 subject_ctors_by_name: dict[str, Callable] = {
     "feynman": lambda: FeynmanTestSubject("-O2"),
     "feynman-apf": lambda: FeynmanTestSubject("-apf"),
+    "feynman-qpf": lambda: FeynmanTestSubject("-qpf"),
     "feynman-ppf": lambda: FeynmanTestSubject("-ppf"),
     "feynman-pyzx": FeynmanPyzxTestSubject,
     "mlvoqc": MlvoqcTestSubject,
@@ -606,7 +607,7 @@ def make_benchmark(
 popl25_subjects = [
     "feynman",
     "feynman-apf",
-    "feynman-ppf",
+    "feynman-qpf",
     "feynman-pyzx",
     "mlvoqc",
     "pyzx",

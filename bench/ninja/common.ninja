@@ -189,8 +189,8 @@ rule bench_feynopt_pyzx
             ulimit -t ${ulimit_time}; $
             . ${bench_root}/.venv/bin/activate; $
             cd ${subject_root_feynman} && $
-            echo '\''Stage 1: feynopt -ppf'\'' > '\''${log_file}'\'' && $
-            cabal exec -v0 -O2 feynopt -- -ppf '\''${in}'\'' $
+            echo '\''Stage 1: feynopt -qpf'\'' > '\''${log_file}'\'' && $
+            cabal exec -v0 -O2 feynopt -- -qpf '\''${in}'\'' $
                 > '\''${opt_file}_p0.qc'\'' 2>> '\''${log_file}'\'' && $
             cd ${subject_root_pyzx} && $
             echo '\''Stage 2: pyzx TODD'\'' >> '\''${log_file}'\'' && $
@@ -346,7 +346,7 @@ rule bench_vv_qco
             ulimit -v ${ulimit_mem}; $
             ulimit -t ${ulimit_time}; $
             cd ${subject_root_feynman} && $
-            echo '\''Stage 1: feynopt -ppf'\'' > '\''${log_file}'\'' && $
+            echo '\''Stage 1: feynopt -O2'\'' > '\''${log_file}'\'' && $
             cabal exec -v0 -O2 feynopt -- -O2 '\''${in}'\'' $
                 > '\''${opt_file}_p0.qc'\'' 2>> '\''${log_file}'\'' && $
             cd ${subject_root_vv_qco} && $
