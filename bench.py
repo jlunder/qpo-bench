@@ -442,6 +442,12 @@ class FeynmanPyzxTestSubject(TestSubject):
 class QuartzTestSubject(TestSubject):
     path: Path = Path("quartz")
 
+    quartz_time_s: int
+
+    def __init__(self, quartz_time_s: int = 45):
+        super().__init__()
+        self.quartz_time_s = quartz_time_s
+
     @property
     def bench_quartz_bin_path(self) -> Path:
         return self.subject_path / "build/bench_quartz"
@@ -460,7 +466,10 @@ class QuartzTestSubject(TestSubject):
             "bench_quartz",
             [str(t.ref_path)],
             ["quartz_bench_deps"],
-            variables=TestSubject.test_vars(c, t),
+            variables=TestSubject.test_vars(c, t)
+            | {
+                "quartz_time": self.quartz_time_s,
+            },
         )
         return t
 
@@ -548,7 +557,7 @@ subject_ctors_by_name: dict[str, Callable] = {
     "mlvoqc": MlvoqcTestSubject,
     "pyzx": PyzxTestSubject,
     "pyzx-todd": PyzxToddTestSubject,
-    "quartz": QuartzTestSubject,
+    "quartz": lambda: QuartzTestSubject(45),
     "queso": lambda: QuesoTestSubject(45, 4 * 1024 * 1024),
     "quizx": QuizxTestSubject,
     # "topt": ToptTestSubject,

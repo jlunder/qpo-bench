@@ -13,7 +13,7 @@ using namespace quartz;
 void parse_args(char **argv, int argc, bool &simulated_annealing,
                 bool &early_stop, bool &disable_search,
                 std::string &input_filename, std::string &output_filename,
-                std::string &eqset_filename) {
+                std::string &eqset_filename, double timeout) {
   assert(argv[1] != nullptr);
   input_filename = std::string(argv[1]);
   early_stop = true;
@@ -30,6 +30,10 @@ void parse_args(char **argv, int argc, bool &simulated_annealing,
       disable_search = true;
       continue;
     }
+    if (!std::strcmp(argv[i], "--timeout")) {
+      timeout = atof(argv[++i]);
+      continue;
+    }
   }
 }
 
@@ -39,8 +43,9 @@ int main(int argc, char **argv) {
   bool simulated_annealing = false;
   bool early_stop = false;
   bool disable_search = false;
+  double timeout = 3600.0;
   parse_args(argv, argc, simulated_annealing, early_stop, disable_search,
-             input_fn, output_fn, eqset_fn);
+             input_fn, output_fn, eqset_fn, timeout);
   auto fn = input_fn.substr(input_fn.rfind('/') + 1);
 
   // Construct contexts
@@ -88,7 +93,7 @@ int main(int argc, char **argv) {
   // Optimization
   auto graph_after_search =
       graph_before_search->optimize(&dst_ctx, eqset_fn, fn, /*print_message=*/
-                                    true);
+                                    true, nullptr, -1, timeout);
   end = std::chrono::steady_clock::now();
   std::cout << "Optimization results of Quartz for " << fn
             << " on Clifford+T gate set."

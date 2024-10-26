@@ -228,7 +228,7 @@ rule bench_quartz
             cd ${subject_root_quartz} && $
             '\''${quartz_bench_quartz}'\'' '\''${in}'\'' $
                 --eqset '\''${quartz_ecc_set}'\'' $
-                --output '\''${opt_file}'\'' --timeout 60 $
+                --output '\''${opt_file}'\'' --timeout ${quartz_time} $
                 2>&1 > '\''${log_file}'\'' $
             ' || true
 
@@ -269,7 +269,8 @@ rule bench_queso
                 -c '\''${in}'\'' -g nam -r rules_q3_s6_nam.txt -sr rules_q3_s6_nam_symb.txt $
                 -t '\''${queso_time}'\'' -o '\''${opt_file}.dir'\'' -j "nam" $
                 2>&1 > '\''${log_file}'\'' && $
-            cat '\''${opt_file}.dir'\''/* > '\''${opt_file}'\'' 2>> '\''${log_file}'\'' $
+            cat '\''${opt_file}.dir'\''/* | sed -e '\''s/^qreg qubits/qreg q/'\'' $
+                > '\''${opt_file}'\'' 2>> '\''${log_file}'\'' $
             ' || true
 
 
